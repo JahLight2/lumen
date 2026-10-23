@@ -148,3 +148,21 @@ country availability question arises. The remaining Ethiopia-relevant factors ar
 **connectivity cost/reliability and electricity**, which belong in the pilot's
 operational plan, not in this ledger — note that a 64 MB test clip and a 4 TB camera
 drive are not the same problem over a typical Addis uplink.
+
+## Vercel (evaluated Oct 2026 — deploy attempted, verdict: demo-only)
+
+**Plan available to this account:** Hobby (no card on file). Pro is US$20/seat/month.
+
+| Item | Hobby value | Consequence for us |
+|---|---|---|
+| Commercial use | **Prohibited** — Hobby is personal/non-commercial only (fair-use guidelines list paid client work, ads, affiliate sites) | A client-facing pilot demo is commercial. A static demo is tolerable as internal R&D only; **do not** present it as the pilot deployment |
+| Fast Data Transfer | 100 GB/mo | fine for a demo |
+| Function invocations | 1M/mo | N/A — no functions used |
+| Builds | 100 deployments/day, 1 concurrent build | fine |
+| Overage | features **pause**, no auto-billing | no surprise charges |
+| Data use | Hobby content may be used for model training (opt-out in account settings), terms updated 1 Jun 2026 | **never** put client footage or real project data on Hobby |
+| Deployment protection | Vercel Authentication ON by default for this team (`all_except_custom_domains`) | every URL returns 302 → vercel.com/sso-api; **only signed-in account members can open it** |
+
+**Runtime incompatibility (decisive):** the product needs a long-lived process (`serve_forever`), a writable SQLite/WAL catalogue on local disk, byte-range reads of originals from a local `abs_path`, and a WebDAV `/dav/` mount. Vercel is serverless with ephemeral disk. Only a captured, read-only snapshot can be hosted there.
+
+**What was deployed:** project `lfmc-demo-static` (id `prj_nblyiy6VgJfFjgXH27oKtmYc5mMj`), production deployment `dpl_JCEGpfnH9VMB6VAssQpR5ku1WAvo` → https://lfmc-demo-static-kiruproof-7222.vercel.app — a static read-only snapshot (loader + gzip payload). Requires the owner to be signed in to Vercel. Remove with `delete_project` when done; nothing else in the account was touched.
