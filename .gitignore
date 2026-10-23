@@ -1,0 +1,20 @@
+# local catalogue, tokens, caches, sample data — never commit these
+data/
+*.db
+*.db-wal
+*.db-shm
+*.token
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

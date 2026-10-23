@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LFMC — local-first media catalogue</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b23; --panel2:#1b232d; --line:#27313d;
+    --text:#e6edf3; --dim:#8b98a5; --accent:#58a6ff; --ok:#3fb950;
+    --warn:#d29922; --bad:#f85149; --chip:#22303c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;gap:14px;
+         align-items:center;flex-wrap:wrap;background:var(--panel)}
+  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin:0 0 10px}
+  .badge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--chip);
+         color:var(--dim);border:1px solid var(--line)}
+  .badge.demo{background:#3d2f00;color:#e3b341;border-color:#5c4700}
+  .wrap{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;padding:14px}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .panel + .panel{margin-top:14px}
+  button{font:inherit;font-size:12px;background:var(--panel2);color:var(--text);
+         border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+  button:hover{border-color:var(--accent);color:#fff}
+  button.primary{background:#1f6feb;border-color:#1f6feb}
+  button.ghost{background:transparent}
+  input[type=text]{font:inherit;width:100%;padding:8px 10px;border-radius:6px;
+        border:1px solid var(--line);background:#0b0f14;color:var(--text)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .root{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:9px;background:var(--panel2)}
+  .root .name{font-weight:600}
+  .root .path{color:var(--dim);font-size:11.5px;word-break:break-all}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .dot.off{background:var(--bad)}
+  .file{display:flex;gap:10px;align-items:center;padding:7px 9px;border-radius:7px;
+        border:1px solid transparent;cursor:default}
+  .file:hover{background:var(--panel2);border-color:var(--line)}
+  .file .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .file .meta{color:var(--dim);font-size:11.5px;white-space:nowrap}
+  .st{font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+  .st.original_available{background:#0d2a16;color:#56d364;border-color:#1c5a30}
+  .st.preview_only{background:#33270a;color:#e3b341;border-color:#6b5210}
+  .st.catalogue_only{background:#2b1a1a;color:#ff9b95;border-color:#5c2a2a}
+  .st.deleted{background:#241a1a;color:#8b98a5;border-color:#3a2a2a}
+  .crumb{color:var(--dim);font-size:12px;margin-bottom:8px;cursor:pointer}
+  .crumb b{color:var(--text)}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:11px;
+      overflow:auto;font-size:11.5px;max-height:340px;margin:8px 0 0}
+  .kpi{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px}
+  .kpi div{font-size:11px;color:var(--dim)}
+  .kpi b{display:block;font-size:17px;color:var(--text);font-weight:600}
+  .folders{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .folders button{font-size:12px}
+  .hint{color:var(--dim);font-size:11.5px;margin-top:8px}
+  .err{color:var(--bad);font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;background:var(--chip);
+       color:var(--dim);margin:1px 3px 1px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Local-First Media Collaboration — catalogue spike</h1>
+  <span class="badge" id="health">connecting…</span>
+  <span class="badge demo" id="demobadge" style="display:none">DEMO MODE · synthetic data</span>
+  <span class="badge" id="wire">0 bytes over the wire</span>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="panel">
+      <h2>Storage roots</h2>
+      <div id="roots"><div class="hint">loading…</div></div>
+      <div class="hint">
+        Originals are only reachable while the host computer and drive are online.
+        Disconnecting the drive keeps this catalogue searchable — it never deletes it.
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Catalogue search (works offline)</h2>
+      <input type="text" id="q" placeholder="filename or folder, e.g. drone or interview">
+      <div class="row" style="margin-top:8px">
+        <button class="primary" onclick="doSearch()">Search</button>
+        <button class="ghost" onclick="clearSearch()">Clear</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Mount this drive (read-only WebDAV)</h2>
+      <div id="dav"><div class="hint">loading…</div></div>
+    </div>
+    <div class="panel">
+      <h2>NLE data residency</h2>
+      <div id="nle"><div class="hint">loading…</div></div>
+      <div class="hint">Every NLE path below is <b>unverified</b> in this build.</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Catalogue browser</h2>
+      <div class="crumb" id="crumb"></div>
+      <div class="folders" id="folders"></div>
+      <div id="files"><div class="hint">Select a root to browse its catalogue.</div></div>
+    </div>
+    <div class="panel">
+      <h2>Ranged-open measurement (spike)</h2>
+      <div class="hint">
+        Runs real HTTP range requests against the local media server and reports how many
+        bytes it took to read the container structure. This measures <i>our</i> read path —
+        it does not prove Premiere or Resolve behaviour.
+      </div>
+      <div id="spikeOut"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const S = { rootId:null, path:"", roots:[] };
+const $ = id => document.getElementById(id);
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  const t = await r.text();
+  let j; try{ j = JSON.parse(t) } catch(e){ j = {raw:t} }
+  if(!r.ok) throw new Error((j && (j.message||j.error)) || ("HTTP "+r.status));
+  return j;
+}
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtBytes = n => n>1024*1024 ? (n/1048576).toFixed(2)+" MB"
+                 : n>1024 ? (n/1024).toFixed(1)+" KB" : (n||0)+" B";
+
+async function boot(){
+  try{
+    const h = await api('/api/health');
+    $('health').textContent = "host online · v"+h.version;
+    $('health').style.color = '#3fb950';
+    if(h.demo) $('demobadge').style.display='inline-block';
+  }catch(e){
+    $('health').textContent = "host unreachable"; $('health').style.color='#f85149';
+  }
+  await loadRoots(); loadTransfers(); loadDav(); loadNle();
+}
+
+async function loadRoots(){
+  const d = await api('/api/roots');
+  S.roots = d.roots || [];
+  if(!S.roots.length){
+    $('roots').innerHTML = '<div class="hint">No roots registered. Run <code>python -m lfmc.cli seed-demo</code>.</div>';
+    return;
+  }
+  if(!S.rootId) S.rootId = S.roots[0].id;
+  $('roots').innerHTML = S.roots.map(r => `
+    <div class="root">
+      <div class="name"><span class="dot ${r.online?'on':'off'}"></span>${esc(r.label)}</div>
+      <div class="path">${esc(r.abs_path)}</div>
+      <div class="meta" style="color:var(--dim);font-size:11.5px;margin:4px 0 7px">
+        ${r.live_assets} assets · ${r.video_assets} video ·
+        ${r.online?'drive reachable':'drive offline — catalogue only'}
+      </div>
+      <div class="row">
+        <button onclick="browse('${r.id}','')">Browse</button>
+        <button onclick="scan('${r.id}')">Re-scan</button>
+        ${r.online
+          ? `<button onclick="toggleRoot('${r.id}','disconnect')">Disconnect drive</button>`
+          : `<button onclick="toggleRoot('${r.id}','reconnect')">Reconnect</button>`}
+      </div>
+    </div>`).join('');
+  if(!S.path) browse(S.rootId, "");
+}
+
+async function scan(id){
+  await api(`/api/roots/${id}/scan`, {method:'POST'});
+  await loadRoots();
+}
+async function toggleRoot(id, action){
+  await api(`/api/roots/${id}/${action}`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
+  await loadRoots();
+  browse(id, S.path);
+}
+async function browse(rootId, path){
+  S.rootId = rootId; S.path = path;
+  const d = await api(`/api/browse?root_id=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`);
+  const root = S.roots.find(r => r.id === rootId) || {};
+  $('crumb').innerHTML = `<span onclick="browse('${rootId}','')">${esc(d.root_label||'root')}</span>` +
+     (path ? ` / <b>${esc(path)}</b>` : '') +
+     (d.root_online ? '' : ' <span class="st catalogue_only">drive offline</span>');
+  $('folders').innerHTML = (path ? `<button onclick="browse('${rootId}','${esc(path.split('/').slice(0,-1).join('/'))}')">↑ up</button>` : '') +
+    d.folders.map(f => `<button onclick="browse('${rootId}','${esc(f.path)}')">📁 ${esc(f.name)} <span style="color:var(--dim)">${f.file_count}</span></button>`).join('');
+  if(!d.files.length){
+    $('files').innerHTML = '<div class="hint">No files in this folder (or folder is empty in the catalogue).</div>';
+    return;
+  }
+  $('files').innerHTML = d.files.map(f => {
+    const a = f.availability || {};
+    const isVideo = (f.media_kind === 'video');
+    return `<div class="file">
+      <span class="st ${a.state}">${esc(a.state_label||a.state)}</span>
+      <span class="nm" title="${esc(f.rel_path)}">${esc(f.name)}</span>
+      <span class="meta">${fmtBytes(f.size_bytes)}</span>
+      ${a.preview_available ? `<button class="ghost" onclick="showPreview('${f.id}')">Preview</button>` : ''}
+      ${isVideo && a.original_available ? `<button onclick="measureOpen('${f.id}')">Measure open</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function measureOpen(id){
+  $('spikeOut').innerHTML = '<div class="hint">issuing range requests…</div>';
+  try{
+    const d = await api(`/api/spike/open?asset_id=${encodeURIComponent(id)}&seeks=10&chunk_mb=2`);
+    const pct = (d.open_bytes_ratio*100).toFixed(3);
+    $('spikeOut').innerHTML = `
+      <div class="kpi">
+        <div><b>${fmtBytes(d.bytes_fetched_for_open)}</b>fetched to read structure</div>
+        <div><b>${pct}%</b>of the ${fmtBytes(d.file_size)} file</div>
+        <div><b>${d.requests_for_open}</b>HTTP range requests</div>
+        <div><b>${d.top_boxes.map(b=>esc(b.type)).join(' · ')}</b>top-level boxes</div>
+        <div><b>${fmtBytes(d.modelled_seek_bytes)}</b>modelled for 10 seeks</div>
+      </div>
+      <pre>${esc(JSON.stringify({moov_offset:d.moov_offset, moov_size:d.moov_size,
+        moov_before_mdat:d.moov_before_mdat, model_notes:d.model_notes,
+        first_ranges:d.stats.first_ranges}, null, 2))}</pre>`;
+    loadTransfers();
+  }catch(e){
+    $('spikeOut').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+async function showPreview(id){
+  const r = await fetch('/preview/'+encodeURIComponent(id));
+  if(!r.ok){ $('files').insertAdjacentHTML('beforeend',
+     `<div class="err" style="padding:8px">No readable preview: ${r.status}</div>`); return; }
+  const b = await r.blob();
+  const url = URL.createObjectURL(b);
+  $('files').insertAdjacentHTML('afterbegin',
+    `<div style="padding:8px"><img src="${url}" style="max-width:100%;border-radius:8px;border:1px solid var(--line)">
+     <div class="hint">Cached preview served from the host cache — this is <b>not</b> the original.</div></div>`);
+}
+
+async function doSearch(){
+  const q = $('q').value.trim(); if(!q) return;
+  const d = await api('/api/search?q='+encodeURIComponent(q));
+  if(!d.results.length){ $('files').innerHTML = '<div class="hint">No matches in the local catalogue.</div>'; return; }
+  $('crumb').innerHTML = `<b>search:</b> ${esc(q)} <span class="badge">${d.count} result(s) · offline-capable</span>`;
+  $('folders').innerHTML = '<button class="ghost" onclick="browse(S.rootId, S.path)">← back to folder</button>';
+  $('files').innerHTML = d.results.map(f => {
+    const a = f.availability||{};
+    return `<div class="file">
+      <span class="st ${a.state}">${esc(a.state_label||a.state)}</span>
+      <span class="nm">${esc(f.rel_path)}</span>
+      <span class="meta">${fmtBytes(f.size_bytes)}</span>
+    </div>`;
+  }).join('');
+}
+function clearSearch(){ $('q').value=''; browse(S.rootId, S.path); }
+
+async function loadTransfers(){
+  const d = await api('/api/transfers?limit=1');
+  $('wire').textContent = fmtBytes(d.total_bytes)+" served · "+d.total_requests+" range requests";
+}
+
+async function loadDav(){
+  try{
+    const d = await api('/api/dav/info');
+    const url = location.origin + '/dav/';
+    $('dav').innerHTML = `
+      <div class="root">
+        <div class="name">${esc(d.protocol)}</div>
+        <div class="path">${esc(url)}</div>
+        <div style="margin:6px 0">
+          <span class="tag">no third-party driver</span>
+          <span class="tag">no licence cost</span>
+          <span class="tag" style="color:#e3b341">no TLS yet — LAN/VPN only</span>
+        </div>
+        <div class="meta" style="color:var(--dim);font-size:11.5px">
+          ${esc(d.offline_semantics)}<br>
+          ${esc(d.write_operations)}
+        </div>
+      </div>
+      <div class="hint">Mount steps for macOS, Windows and rclone are in
+        <b>docs/WEBDAV_MOUNT.md</b>. Password = the host token.</div>`;
+  }catch(e){ $('dav').innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
+}
+
+async function loadNle(){
+  const d = await api('/api/nle/capabilities');
+  $('nle').innerHTML = d.adapters.map(a => `
+    <div class="root">
+      <div class="name">${esc(a.nle_name)} — ${a.mode==='vendor_hosted'?'vendor-hosted':'private/controlled'}</div>
+      <div class="path">${esc(a.display_name)}</div>
+      <div style="margin:6px 0">
+        <span class="tag">originals stay local</span>
+        <span class="tag">media sync: ${esc(a.media_sync_default)}</span>
+        <span class="tag" style="color:#e3b341">${esc(a.verification_status)}</span>
+        ${a.account_required?'<span class="tag">vendor account required</span>':'<span class="tag">no vendor account</span>'}
+      </div>
+    </div>`).join('') +
+    `<div class="hint" style="margin-top:6px">${esc(d.nle_access_note)}</div>`;
+}
+
+boot();
+setInterval(loadTransfers, 5000);
+</script>
+</body>
+</html>
