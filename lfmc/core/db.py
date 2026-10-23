@@ -157,6 +157,77 @@ CREATE INDEX IF NOT EXISTS events_ts_idx ON events(ts);
 -- ---------------------------------------------------------------------------
 -- NLE project collaboration (references only -- never a copy of project files)
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- Review: comments, links, selects, versions (see core/review.py)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS asset_comments (
+    id              TEXT PRIMARY KEY,
+    asset_id        TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    version_label   TEXT NOT NULL DEFAULT 'v1',
+    parent_id       TEXT REFERENCES asset_comments(id) ON DELETE CASCADE,
+    author          TEXT NOT NULL,
+    author_kind     TEXT NOT NULL DEFAULT 'member',   -- member | guest
+    body            TEXT NOT NULL,
+    timecode_ms     INTEGER,
+    timecode_end_ms INTEGER,
+    fps             REAL NOT NULL DEFAULT 25.0,
+    visibility      TEXT NOT NULL DEFAULT 'internal', -- internal | shared
+    resolved_at     TEXT,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS asset_comments_asset_idx ON asset_comments(asset_id, version_label);
+
+CREATE TABLE IF NOT EXISTS comment_reactions (
+    comment_id TEXT NOT NULL REFERENCES asset_comments(id) ON DELETE CASCADE,
+    emoji      TEXT NOT NULL,
+    actor      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (comment_id, emoji, actor)
+);
+
+-- Scoped accountless review links. Only the hash of the token is stored.
+CREATE TABLE IF NOT EXISTS review_links (
+    id              TEXT PRIMARY KEY,
+    token_hash      TEXT NOT NULL UNIQUE,
+    asset_id        TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    version_label   TEXT NOT NULL DEFAULT 'v1',
+    scope           TEXT NOT NULL DEFAULT 'asset',
+    allow_comments  INTEGER NOT NULL DEFAULT 1,
+    allow_download  INTEGER NOT NULL DEFAULT 0,
+    watermark       INTEGER NOT NULL DEFAULT 0,
+    passphrase_salt TEXT,
+    passphrase_hash TEXT,
+    expires_at      TEXT,
+    revoked_at      TEXT,
+    created_by      TEXT,
+    created_at      TEXT NOT NULL,
+    last_used_at    TEXT,
+    note            TEXT
+);
+CREATE INDEX IF NOT EXISTS review_links_asset_idx ON review_links(asset_id);
+
+-- Footage selects (mobile Keep/Maybe/Reject), bound to stable asset id + timecode.
+CREATE TABLE IF NOT EXISTS selects (
+    asset_id    TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    reviewer    TEXT NOT NULL,
+    decision    TEXT NOT NULL CHECK (decision IN ('keep','maybe','reject')),
+    note        TEXT,
+    timecode_ms INTEGER,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (asset_id, reviewer)
+);
+
+-- Version stacking: comments/links bind to a label, never silently to "latest".
+CREATE TABLE IF NOT EXISTS asset_versions (
+    asset_id    TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    label       TEXT NOT NULL,
+    note        TEXT,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (asset_id, label)
+);
+
 CREATE TABLE IF NOT EXISTS projects (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
@@ -200,8 +271,22 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """Additive-only migrations. SQLite cannot drop/alter types, and we never
+    rewrite user data to upgrade a schema."""
+    wanted = {
+        "assets": {"version_label": "TEXT NOT NULL DEFAULT 'v1'"},
+    }
+    for table, columns in wanted.items():
+        existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    _add_missing_columns(conn)
     cur = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'")
     row = cur.fetchone()
     if row is None:

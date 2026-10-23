@@ -3,312 +3,1041 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LFMC — local-first media catalogue</title>
+<title>Lumen — local-first media workspace</title>
 <style>
   :root{
-    --bg:#0d1117; --panel:#151b23; --panel2:#1b232d; --line:#27313d;
-    --text:#e6edf3; --dim:#8b98a5; --accent:#58a6ff; --ok:#3fb950;
-    --warn:#d29922; --bad:#f85149; --chip:#22303c;
+    --bg:#0a0a0b; --bg-2:#111113; --bg-3:#17171a; --panel:#141416;
+    --line:#232327; --line-2:#2e2e33;
+    --text:#f2f1ee; --dim:#8d8c92; --dim-2:#6a6970;
+    --accent:#e8e4dc; --lime:#c8ff4d; --blue:#6ea8fe; --amber:#f0b429;
+    --ok:#54d17a; --bad:#ff6b6b;
+    --r:14px;
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased}
+  html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);
-       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;gap:14px;
-         align-items:center;flex-wrap:wrap;background:var(--panel)}
-  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
-  h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin:0 0 10px}
-  .badge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--chip);
-         color:var(--dim);border:1px solid var(--line)}
-  .badge.demo{background:#3d2f00;color:#e3b341;border-color:#5c4700}
-  .wrap{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;padding:14px}
-  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
-  .panel + .panel{margin-top:14px}
-  button{font:inherit;font-size:12px;background:var(--panel2);color:var(--text);
-         border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
-  button:hover{border-color:var(--accent);color:#fff}
-  button.primary{background:#1f6feb;border-color:#1f6feb}
-  button.ghost{background:transparent}
-  input[type=text]{font:inherit;width:100%;padding:8px 10px;border-radius:6px;
-        border:1px solid var(--line);background:#0b0f14;color:var(--text)}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .root{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:9px;background:var(--panel2)}
-  .root .name{font-weight:600}
-  .root .path{color:var(--dim);font-size:11.5px;word-break:break-all}
-  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
-  .dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+       font:14px/1.55 "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       overflow:hidden}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  input,textarea,select{font:inherit;color:inherit}
+  ::selection{background:#c8ff4d33}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+  /* ---------- shell ---------- */
+  .app{display:grid;grid-template-columns:236px minmax(0,1fr) 372px;height:100vh}
+  .app.no-inspector{grid-template-columns:236px minmax(0,1fr)}
+  @media(max-width:1180px){.app{grid-template-columns:200px minmax(0,1fr)}.inspector{display:none}}
+  @media(max-width:820px){.app{grid-template-columns:1fr}.sidebar{display:none}}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{border-right:1px solid var(--line);background:var(--bg-2);display:flex;
+           flex-direction:column;min-height:0}
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px}
+  .mark{width:26px;height:26px;border-radius:8px;background:var(--lime);
+        display:grid;place-items:center;color:#0a0a0b;font-weight:800;font-size:14px}
+  .brand b{font-size:15px;letter-spacing:-.01em}
+  .brand span{color:var(--dim-2);font-size:11px;display:block;letter-spacing:.04em;
+              text-transform:uppercase;margin-top:1px}
+  .nav{padding:6px 8px;display:grid;gap:2px}
+  .nav a{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;
+         color:var(--dim);text-decoration:none;font-size:13px}
+  .nav a:hover{background:var(--bg-3);color:var(--text)}
+  .nav a.on{background:#1e1e22;color:var(--text)}
+  .nav a .ico{width:15px;text-align:center;opacity:.85}
+  .side-scroll{overflow:auto;min-height:0;flex:1;padding-bottom:14px}
+  .side-h{padding:14px 16px 6px;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+          color:var(--dim-2);display:flex;justify-content:space-between;align-items:center}
+  .drive{padding:8px 10px;margin:0 8px 6px;border-radius:10px;background:var(--bg-3);
+         border:1px solid var(--line);cursor:pointer}
+  .drive:hover{border-color:var(--line-2)}
+  .drive.on{border-color:#3a3a41;background:#1b1b1f}
+  .drive .top{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+  .drive .sub{color:var(--dim-2);font-size:11px;margin-top:3px;display:flex;gap:8px}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .dot.on{background:var(--ok);box-shadow:0 0 7px #54d17a88}
   .dot.off{background:var(--bad)}
-  .file{display:flex;gap:10px;align-items:center;padding:7px 9px;border-radius:7px;
-        border:1px solid transparent;cursor:default}
-  .file:hover{background:var(--panel2);border-color:var(--line)}
-  .file .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .file .meta{color:var(--dim);font-size:11.5px;white-space:nowrap}
-  .st{font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
-  .st.original_available{background:#0d2a16;color:#56d364;border-color:#1c5a30}
-  .st.preview_only{background:#33270a;color:#e3b341;border-color:#6b5210}
-  .st.catalogue_only{background:#2b1a1a;color:#ff9b95;border-color:#5c2a2a}
-  .st.deleted{background:#241a1a;color:#8b98a5;border-color:#3a2a2a}
-  .crumb{color:var(--dim);font-size:12px;margin-bottom:8px;cursor:pointer}
-  .crumb b{color:var(--text)}
-  pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:11px;
-      overflow:auto;font-size:11.5px;max-height:340px;margin:8px 0 0}
-  .kpi{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px}
-  .kpi div{font-size:11px;color:var(--dim)}
-  .kpi b{display:block;font-size:17px;color:var(--text);font-weight:600}
-  .folders{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
-  .folders button{font-size:12px}
-  .hint{color:var(--dim);font-size:11.5px;margin-top:8px}
-  .err{color:var(--bad);font-size:12px}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-  .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;background:var(--chip);
-       color:var(--dim);margin:1px 3px 1px 0}
+  .tree{padding:2px 8px}
+  .tree-item{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:7px;
+             color:var(--dim);font-size:12.5px;cursor:pointer}
+  .tree-item:hover{background:var(--bg-3);color:var(--text)}
+  .tree-item.on{background:#1e1e22;color:var(--text)}
+  .tree-item .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .tree-item .c{color:var(--dim-2);font-size:10.5px}
+  .side-foot{border-top:1px solid var(--line);padding:10px 12px;font-size:11px;color:var(--dim-2)}
+
+  /* ---------- main ---------- */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+  .topbar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);
+          background:linear-gradient(#0a0a0b,#0a0a0bee)}
+  .search{flex:1;display:flex;align-items:center;gap:9px;background:var(--bg-3);
+          border:1px solid var(--line);border-radius:11px;padding:8px 12px;max-width:620px}
+  .search:focus-within{border-color:#3f3f47}
+  .search input{flex:1;background:none;border:none;outline:none;font-size:13px}
+  .search input::placeholder{color:var(--dim-2)}
+  .kbd{border:1px solid var(--line-2);border-radius:5px;padding:0 5px;font-size:10.5px;color:var(--dim-2)}
+  .seg{display:flex;background:var(--bg-3);border:1px solid var(--line);border-radius:9px;padding:2px}
+  .seg button{padding:5px 10px;border-radius:7px;font-size:12px;color:var(--dim)}
+  .seg button.on{background:#26262b;color:var(--text)}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:9px;
+       border:1px solid var(--line-2);background:var(--bg-3);font-size:12.5px;white-space:nowrap}
+  .btn:hover{border-color:#45454e}
+  .btn.primary{background:var(--lime);color:#0a0a0b;border-color:var(--lime);font-weight:650}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+
+  .crumbs{display:flex;align-items:center;gap:8px;padding:11px 18px 4px;font-size:12.5px;color:var(--dim)}
+  .crumbs b{color:var(--text);font-weight:600}
+  .crumbs .sep{color:var(--dim-2)}
+  .crumb-link{cursor:pointer}
+  .crumb-link:hover{color:var(--text)}
+
+  .content{overflow:auto;padding:8px 18px 40px;min-height:0}
+  .section-h{display:flex;align-items:baseline;justify-content:space-between;margin:16px 0 10px}
+  .section-h h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim-2);margin:0}
+  .section-h .meta{font-size:11.5px;color:var(--dim-2)}
+
+  /* grid of assets */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:14px}
+  .card{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;
+        cursor:pointer;transition:border-color .12s,transform .12s}
+  .card:hover{border-color:#3d3d45;transform:translateY(-1px)}
+  .card.on{border-color:var(--lime)}
+  .thumb{aspect-ratio:16/10;background:#0e0e10;position:relative;display:grid;place-items:center;overflow:hidden}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb .kind{position:absolute;left:8px;top:8px;font-size:9.5px;letter-spacing:.06em;
+       text-transform:uppercase;background:#0a0a0bcc;border:1px solid var(--line-2);
+       color:var(--dim);padding:2px 6px;border-radius:5px}
+  .thumb .dur{position:absolute;right:8px;bottom:8px;font-size:10.5px;background:#0a0a0bcc;
+       padding:1px 5px;border-radius:4px;color:#d5d3cd}
+  .card .info{padding:9px 11px 11px}
+  .card .nm{font-size:12.5px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card .meta{display:flex;justify-content:space-between;gap:8px;margin-top:4px;
+       font-size:10.5px;color:var(--dim-2)}
+  .pill{font-size:9.5px;padding:1px 6px;border-radius:20px;border:1px solid var(--line-2);color:var(--dim)}
+  .pill.live{color:#9de8b4;border-color:#2c5c3d;background:#10201a}
+  .pill.offline{color:#ffb3b3;border-color:#5c2c2c;background:#1f1212}
+  .pill.cached{color:#f2ce7b;border-color:#5c4a1f;background:#1f1a10}
+  .pill.planned{color:var(--dim-2);border-style:dashed}
+
+  /* list view */
+  .rows{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .row{display:grid;grid-template-columns:1fr 90px 92px 108px;gap:12px;align-items:center;
+       padding:9px 13px;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer}
+  .row:last-child{border-bottom:none}
+  .row:hover{background:var(--bg-2)}
+  .row.on{background:#1a1a1e}
+  .row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .dim{color:var(--dim-2);font-size:11.5px}
+
+  /* ---------- inspector ---------- */
+  .inspector{border-left:1px solid var(--line);background:var(--bg-2);display:flex;
+             flex-direction:column;min-height:0}
+  .insp-head{padding:12px 14px;border-bottom:1px solid var(--line)}
+  .insp-title{display:flex;align-items:flex-start;gap:8px}
+  .insp-title .nm{font-size:14px;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
+  .insp-sub{color:var(--dim-2);font-size:11.5px;margin-top:5px;display:flex;gap:10px;flex-wrap:wrap}
+  .tabs{display:flex;gap:2px;padding:0 8px;border-bottom:1px solid var(--line);overflow:auto}
+  .tabs button{padding:10px 10px;font-size:12px;color:var(--dim);border-bottom:2px solid transparent;
+               white-space:nowrap}
+  .tabs button.on{color:var(--text);border-bottom-color:var(--lime)}
+  .tabs .n{color:var(--dim-2);font-size:10.5px;margin-left:4px}
+  .insp-body{overflow:auto;flex:1;min-height:0;padding:12px 14px 20px}
+
+  .stage{aspect-ratio:16/9;background:#000;border:1px solid var(--line);border-radius:10px;
+         display:grid;place-items:center;position:relative;overflow:hidden;margin-bottom:10px}
+  .stage img{width:100%;height:100%;object-fit:contain}
+  .stage .badge{position:absolute;left:9px;top:9px}
+  .scrub{display:flex;align-items:center;gap:9px;margin:8px 0 4px}
+  .scrub input[type=range]{flex:1;accent-color:var(--lime);height:3px}
+  .tc{font-size:11px;color:var(--dim)}
+
+  .kv{display:grid;grid-template-columns:104px 1fr;gap:6px 10px;font-size:12px;margin:4px 0 0}
+  .kv dt{color:var(--dim-2)}
+  .kv dd{margin:0;overflow-wrap:anywhere}
+
+  .comment{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:9px;
+           background:var(--bg-3)}
+  .comment.is-reply{margin-left:16px;border-left:2px solid var(--line-2)}
+  .comment.resolved{opacity:.55}
+  .c-head{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+  .avatar{width:20px;height:20px;border-radius:50%;background:#2b2b31;display:grid;place-items:center;
+          font-size:9.5px;font-weight:700;color:#c9c7c1;flex:none}
+  .c-author{font-size:12px;font-weight:600}
+  .c-when{color:var(--dim-2);font-size:10.5px}
+  .c-body{font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .c-actions{display:flex;gap:10px;margin-top:6px;font-size:10.5px;color:var(--dim-2)}
+  .c-actions button:hover{color:var(--text)}
+  .tc-chip{display:inline-block;font-size:10.5px;background:#0a0a0b;border:1px solid var(--line-2);
+           border-radius:5px;padding:1px 6px;color:var(--lime);margin-right:6px;cursor:pointer}
+  .tc-chip:hover{border-color:var(--lime)}
+
+  .compose{border:1px solid var(--line);border-radius:10px;padding:9px;background:var(--bg-3);margin-top:10px}
+  .compose textarea{width:100%;min-height:58px;resize:vertical;background:none;border:none;
+                    outline:none;font-size:12.5px}
+  .compose .foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+  .compose .who{background:#0a0a0b;border:1px solid var(--line-2);border-radius:6px;padding:3px 7px;
+                font-size:11px;width:120px}
+
+  .empty{border:1px dashed var(--line-2);border-radius:10px;padding:16px;text-align:center;
+         color:var(--dim-2);font-size:12px;line-height:1.6}
+  .empty b{color:var(--dim);display:block;margin-bottom:4px;font-weight:600}
+
+  .banner{border:1px solid #4a3a12;background:#1b1608;color:#e8c982;border-radius:10px;
+          padding:9px 11px;font-size:11.5px;margin-bottom:10px;line-height:1.5}
+  .banner.info{border-color:#1f3a52;background:#0b1620;color:#9cc7e8}
+  .banner.bad{border-color:#5c2c2c;background:#1f1212;color:#ffb3b3}
+
+  .selects{display:grid;gap:8px}
+  .sel{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;
+       padding:9px 11px;background:var(--bg-3)}
+  .sel .nm{flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mark-btns{display:flex;gap:4px}
+  .mk{padding:3px 8px;border-radius:6px;border:1px solid var(--line-2);font-size:11px;color:var(--dim)}
+  .mk.keep.on{background:#10251a;border-color:#2c5c3d;color:#9de8b4}
+  .mk.maybe.on{background:#241f0e;border-color:#5c4a1f;color:#f2ce7b}
+  .mk.reject.on{background:#241212;border-color:#5c2c2c;color:#ffb3b3}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+         background:#f2f1ee;color:#0a0a0b;padding:9px 16px;border-radius:10px;font-size:12.5px;
+         font-weight:600;opacity:0;pointer-events:none;transition:.18s;z-index:99;max-width:80vw}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .linkbox{display:flex;gap:6px;margin-top:8px}
+  .linkbox input{flex:1;background:#0a0a0b;border:1px solid var(--line-2);border-radius:7px;
+                 padding:6px 8px;font-size:11px;font-family:ui-monospace,monospace}
 </style>
 </head>
 <body>
-<header>
-  <h1>Local-First Media Collaboration — catalogue spike</h1>
-  <span class="badge" id="health">connecting…</span>
-  <span class="badge demo" id="demobadge" style="display:none">DEMO MODE · synthetic data</span>
-  <span class="badge" id="wire">0 bytes over the wire</span>
-</header>
+<div class="app" id="app">
+  <!-- ================= sidebar ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">L</div>
+      <div><b>Lumen</b><span>local-first media</span></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-scroll">
+      <div class="side-h">Drives <span id="rootCount"></span></div>
+      <div id="drives"></div>
+      <div class="side-h" id="treeHead" style="display:none">Folders</div>
+      <div class="tree" id="tree"></div>
+    </div>
+    <div class="side-foot" id="wire">0 B served · 0 range requests</div>
+  </aside>
 
-<div class="wrap">
-  <div>
-    <div class="panel">
-      <h2>Storage roots</h2>
-      <div id="roots"><div class="hint">loading…</div></div>
-      <div class="hint">
-        Originals are only reachable while the host computer and drive are online.
-        Disconnecting the drive keeps this catalogue searchable — it never deletes it.
+  <!-- ================= main ================= -->
+  <main class="main">
+    <div class="topbar">
+      <div class="search">
+        <span style="color:var(--dim-2)">⌕</span>
+        <input id="q" placeholder="Search filenames, folders, transcripts…" autocomplete="off">
+        <span class="kbd">/</span>
+      </div>
+      <div class="seg" id="modeSeg">
+        <button data-mode="catalogue" class="on">Catalogue</button>
+        <button data-mode="semantic">Semantic</button>
+      </div>
+      <div class="seg" id="viewSeg">
+        <button data-view="grid" class="on">Grid</button>
+        <button data-view="list">List</button>
       </div>
     </div>
-    <div class="panel">
-      <h2>Catalogue search (works offline)</h2>
-      <input type="text" id="q" placeholder="filename or folder, e.g. drone or interview">
-      <div class="row" style="margin-top:8px">
-        <button class="primary" onclick="doSearch()">Search</button>
-        <button class="ghost" onclick="clearSearch()">Clear</button>
-      </div>
-    </div>
-    <div class="panel">
-      <h2>Mount this drive (read-only WebDAV)</h2>
-      <div id="dav"><div class="hint">loading…</div></div>
-    </div>
-    <div class="panel">
-      <h2>NLE data residency</h2>
-      <div id="nle"><div class="hint">loading…</div></div>
-      <div class="hint">Every NLE path below is <b>unverified</b> in this build.</div>
-    </div>
-  </div>
 
-  <div>
-    <div class="panel">
-      <h2>Catalogue browser</h2>
-      <div class="crumb" id="crumb"></div>
-      <div class="folders" id="folders"></div>
-      <div id="files"><div class="hint">Select a root to browse its catalogue.</div></div>
+    <div class="crumbs" id="crumbs"></div>
+    <div class="content" id="content"></div>
+  </main>
+
+  <!-- ================= inspector ================= -->
+  <aside class="inspector" id="inspector">
+    <div class="insp-head">
+      <div class="insp-title"><div class="nm" id="inspName">Select an asset</div></div>
+      <div class="insp-sub" id="inspSub">Details, comments and review appear here.</div>
     </div>
-    <div class="panel">
-      <h2>Ranged-open measurement (spike)</h2>
-      <div class="hint">
-        Runs real HTTP range requests against the local media server and reports how many
-        bytes it took to read the container structure. This measures <i>our</i> read path —
-        it does not prove Premiere or Resolve behaviour.
-      </div>
-      <div id="spikeOut"></div>
+    <div class="tabs" id="tabs">
+      <button data-tab="details" class="on">Details</button>
+      <button data-tab="comments">Comments<span class="n" id="cCount"></span></button>
+      <button data-tab="transcript">Transcript</button>
+      <button data-tab="similar">Similar</button>
+      <button data-tab="share">Share</button>
     </div>
-  </div>
+    <div class="insp-body" id="inspBody"></div>
+  </aside>
 </div>
+<div class="toast" id="toast"></div>
 
 <script>
-const S = { rootId:null, path:"", roots:[] };
+/* =========================================================================
+   Lumen — UI over the LFMC local catalogue.
+   Everything rendered here comes from the local host API. Anything not yet
+   built is shown as an explicit empty/planned state, never faked.
+   ========================================================================= */
+const S = {
+  roots: [], rootId: null, path: "", view: "grid", mode: "catalogue",
+  assets: [], assetId: null, tab: "details", comments: [], selects: {},
+  links: [], viewer: "producer", fps: 25,
+  capabilities: null, transfers: {bytes:0, requests:0}
+};
 const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtB = n => n>=1<<30 ? (n/(1<<30)).toFixed(2)+" GB"
+             : n>=1<<20 ? (n/(1<<20)).toFixed(1)+" MB"
+             : n>=1024 ? (n/1024).toFixed(0)+" KB" : (n||0)+" B";
+const ago = iso => {
+  if(!iso) return "";
+  const d = (Date.now() - new Date(iso).getTime())/1000;
+  if(!isFinite(d)) return "";
+  if(d < 60) return "just now";
+  if(d < 3600) return Math.floor(d/60)+"m ago";
+  if(d < 86400) return Math.floor(d/3600)+"h ago";
+  if(d < 172800) return "yesterday";
+  return Math.floor(d/86400)+"d ago";
+};
 
-async function api(path, opts){
+async function api(path, opts={}){
   const r = await fetch(path, opts);
   const t = await r.text();
-  let j; try{ j = JSON.parse(t) } catch(e){ j = {raw:t} }
+  let j; try{ j = JSON.parse(t); }catch(e){ j = {raw:t}; }
   if(!r.ok) throw new Error((j && (j.message||j.error)) || ("HTTP "+r.status));
   return j;
 }
-const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmtBytes = n => n>1024*1024 ? (n/1048576).toFixed(2)+" MB"
-                 : n>1024 ? (n/1024).toFixed(1)+" KB" : (n||0)+" B";
+function toast(msg){
+  const el = $("toast"); el.textContent = msg; el.classList.add("on");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>el.classList.remove("on"), 2200);
+}
 
+/* ---------------- boot ---------------- */
 async function boot(){
   try{
-    const h = await api('/api/health');
-    $('health').textContent = "host online · v"+h.version;
-    $('health').style.color = '#3fb950';
-    if(h.demo) $('demobadge').style.display='inline-block';
-  }catch(e){
-    $('health').textContent = "host unreachable"; $('health').style.color='#f85149';
-  }
-  await loadRoots(); loadTransfers(); loadDav(); loadNle();
+    await loadCapabilities();
+    await loadRoots();
+    loadSelects();
+    loadTransfers();
+    setInterval(loadTransfers, 6000);
+  }catch(e){ toast("Host unreachable: "+e.message); }
+}
+
+async function loadCapabilities(){
+  try{ S.capabilities = await api("/api/nle/capabilities"); }catch(e){ S.capabilities = null; }
+  renderNav();
+}
+
+function renderNav(){
+  const items = [
+    ["browse","◱","Browse"],
+    ["selects","✓","Selects"],
+    ["review","◐","Review links"],
+    ["ai","✷","AI index"],
+    ["nle","⇄","NLE projects"],
+    ["mount","◫","Mount"],
+  ];
+  $("nav").innerHTML = items.map(([k,i,label]) =>
+    `<a href="#${k}" class="${(S.route||"browse")===k?"on":""}" data-route="${k}">
+       <span class="ico">${i}</span>${label}</a>`).join("");
+  document.querySelectorAll("[data-route]").forEach(a =>
+    a.onclick = () => { location.hash = a.dataset.route; });
 }
 
 async function loadRoots(){
-  const d = await api('/api/roots');
+  const d = await api("/api/roots");
   S.roots = d.roots || [];
+  $("rootCount").textContent = S.roots.length ? `(${S.roots.length})` : "";
   if(!S.roots.length){
-    $('roots').innerHTML = '<div class="hint">No roots registered. Run <code>python -m lfmc.cli seed-demo</code>.</div>';
+    $("drives").innerHTML = `<div style="padding:0 16px;color:var(--dim-2);font-size:12px">
+      No drives registered.<br>Run <span class="mono">python3 -m lfmc.cli seed-demo</span></div>`;
     return;
   }
   if(!S.rootId) S.rootId = S.roots[0].id;
-  $('roots').innerHTML = S.roots.map(r => `
-    <div class="root">
-      <div class="name"><span class="dot ${r.online?'on':'off'}"></span>${esc(r.label)}</div>
-      <div class="path">${esc(r.abs_path)}</div>
-      <div class="meta" style="color:var(--dim);font-size:11.5px;margin:4px 0 7px">
-        ${r.live_assets} assets · ${r.video_assets} video ·
-        ${r.online?'drive reachable':'drive offline — catalogue only'}
-      </div>
-      <div class="row">
-        <button onclick="browse('${r.id}','')">Browse</button>
-        <button onclick="scan('${r.id}')">Re-scan</button>
-        ${r.online
-          ? `<button onclick="toggleRoot('${r.id}','disconnect')">Disconnect drive</button>`
-          : `<button onclick="toggleRoot('${r.id}','reconnect')">Reconnect</button>`}
-      </div>
-    </div>`).join('');
-  if(!S.path) browse(S.rootId, "");
+  $("drives").innerHTML = S.roots.map(r => `
+    <div class="drive ${r.id===S.rootId?"on":""}" data-root="${r.id}">
+      <div class="top"><span class="dot ${r.online?"on":"off"}"></span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.label)}</span></div>
+      <div class="sub"><span>${r.live_assets} assets</span><span>${r.video_assets} video</span>
+        <span>${r.online?"online":"offline"}</span></div>
+    </div>`).join("");
+  document.querySelectorAll("[data-root]").forEach(el => el.onclick = () => {
+    S.rootId = el.dataset.root; S.path = "";
+    loadRoots().then(()=>{ loadTree(); browse(""); });
+  });
+  await loadTree();
+  await browse(S.path);
 }
 
-async function scan(id){
-  await api(`/api/roots/${id}/scan`, {method:'POST'});
-  await loadRoots();
+async function loadTree(){
+  const root = S.roots.find(r => r.id === S.rootId);
+  if(!root){ $("treeHead").style.display="none"; return; }
+  $("treeHead").style.display="flex";
+  const d = await api(`/api/browse?root_id=${encodeURIComponent(S.rootId)}&path=`);
+  $("tree").innerHTML =
+    `<div class="tree-item ${S.path===""?"on":""}" data-path="">
+       <span>▤</span><span class="n">${esc(root.label)}</span></div>` +
+    d.folders.map(f => `
+      <div class="tree-item ${S.path===f.path?"on":""}" data-path="${esc(f.path)}">
+        <span>▸</span><span class="n">${esc(f.name)}</span><span class="c">${f.file_count}</span>
+      </div>`).join("");
+  document.querySelectorAll("[data-path]").forEach(el =>
+    el.onclick = () => { browse(el.dataset.path); });
 }
-async function toggleRoot(id, action){
-  await api(`/api/roots/${id}/${action}`, {method:'POST',
-    headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
-  await loadRoots();
-  browse(id, S.path);
+
+/* ---------------- browse / search ---------------- */
+async function browse(path){
+  S.path = path || ""; S.assetId = null;
+  const d = await api(`/api/browse?root_id=${encodeURIComponent(S.rootId)}&path=${encodeURIComponent(S.path)}`);
+  const files = d.files || [];
+  S.assets = files.map(f => ({...f, availability: f.availability}));
+  S.folders = d.folders || [];
+  renderCrumbs(d);
+  renderAssets(d);
+  await loadTree();
+  renderInspector();
 }
-async function browse(rootId, path){
-  S.rootId = rootId; S.path = path;
-  const d = await api(`/api/browse?root_id=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`);
-  const root = S.roots.find(r => r.id === rootId) || {};
-  $('crumb').innerHTML = `<span onclick="browse('${rootId}','')">${esc(d.root_label||'root')}</span>` +
-     (path ? ` / <b>${esc(path)}</b>` : '') +
-     (d.root_online ? '' : ' <span class="st catalogue_only">drive offline</span>');
-  $('folders').innerHTML = (path ? `<button onclick="browse('${rootId}','${esc(path.split('/').slice(0,-1).join('/'))}')">↑ up</button>` : '') +
-    d.folders.map(f => `<button onclick="browse('${rootId}','${esc(f.path)}')">📁 ${esc(f.name)} <span style="color:var(--dim)">${f.file_count}</span></button>`).join('');
-  if(!d.files.length){
-    $('files').innerHTML = '<div class="hint">No files in this folder (or folder is empty in the catalogue).</div>';
+
+function renderCrumbs(d){
+  const root = S.roots.find(r => r.id === S.rootId);
+  const parts = (S.path||"").split("/").filter(Boolean);
+  let acc = "";
+  const crumbs = [`<span class="crumb-link" data-crumb="">${esc(root?root.label:"root")}</span>`];
+  parts.forEach(p => { acc = acc ? acc+"/"+p : p;
+    crumbs.push(`<span class="sep">/</span><span class="crumb-link" data-crumb="${esc(acc)}">${esc(p)}</span>`); });
+  const st = d.root_online ? "" : ` <span class="pill offline">drive offline · catalogue only</span>`;
+  $("crumbs").innerHTML = crumbs.join(" ") + st;
+  document.querySelectorAll("[data-crumb]").forEach(el =>
+    el.onclick = () => browse(el.dataset.crumb));
+}
+
+function thumbFor(a){
+  // Deterministic placeholder. We have no decoder (ffmpeg) on this host, so we
+  // must NOT imply this is a real frame. Clearly a generated tile.
+  const hue = [...(a.name||"")].reduce((h,c)=>h+c.charCodeAt(0),0) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="hsl(${hue},24%,17%)"/>
+      <stop offset="1" stop-color="hsl(${(hue+40)%360},18%,9%)"/></linearGradient></defs>
+    <rect width="320" height="200" fill="url(#g)"/>
+    <text x="16" y="104" fill="#ffffff22" font-family="sans-serif" font-size="15">
+      ${a.media_kind==="video"?"▶":a.media_kind==="audio"?"♪":"▤"} no frame decoded</text>
+  </svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+function statePill(a){
+  const st = a.availability?.state || "catalogue_only";
+  if(st === "original_available") return `<span class="pill live">original</span>`;
+  if(st === "preview_only") return `<span class="pill cached">preview only</span>`;
+  if(st === "deleted") return `<span class="pill offline">removed</span>`;
+  return `<span class="pill offline">offline</span>`;
+}
+
+function folderCard(f){
+  return `<div class="card" data-folder="${esc(f.path)}">
+      <div class="thumb" style="background:linear-gradient(135deg,#1b1b1f,#131315)">
+        <span style="font-size:26px;opacity:.5">▤</span>
+        <span class="kind">folder</span>
+      </div>
+      <div class="info">
+        <div class="nm">${esc(f.name)}</div>
+        <div class="meta"><span>${f.file_count} item${f.file_count===1?"":"s"}</span>
+          <span class="pill">catalogue</span></div>
+      </div>
+    </div>`;
+}
+
+function renderAssets(d){
+  const el = $("content");
+  const folders = S.folders || [];
+  if(!S.assets.length && !folders.length){
+    el.innerHTML = `<div class="empty" style="margin-top:22px">
+      <b>Nothing in this folder</b>
+      The catalogue has no entries here. Register a drive or re-scan it from the host.</div>`;
     return;
   }
-  $('files').innerHTML = d.files.map(f => {
-    const a = f.availability || {};
-    const isVideo = (f.media_kind === 'video');
-    return `<div class="file">
-      <span class="st ${a.state}">${esc(a.state_label||a.state)}</span>
-      <span class="nm" title="${esc(f.rel_path)}">${esc(f.name)}</span>
-      <span class="meta">${fmtBytes(f.size_bytes)}</span>
-      ${a.preview_available ? `<button class="ghost" onclick="showPreview('${f.id}')">Preview</button>` : ''}
-      ${isVideo && a.original_available ? `<button onclick="measureOpen('${f.id}')">Measure open</button>` : ''}
-    </div>`;
-  }).join('');
-}
-
-async function measureOpen(id){
-  $('spikeOut').innerHTML = '<div class="hint">issuing range requests…</div>';
-  try{
-    const d = await api(`/api/spike/open?asset_id=${encodeURIComponent(id)}&seeks=10&chunk_mb=2`);
-    const pct = (d.open_bytes_ratio*100).toFixed(3);
-    $('spikeOut').innerHTML = `
-      <div class="kpi">
-        <div><b>${fmtBytes(d.bytes_fetched_for_open)}</b>fetched to read structure</div>
-        <div><b>${pct}%</b>of the ${fmtBytes(d.file_size)} file</div>
-        <div><b>${d.requests_for_open}</b>HTTP range requests</div>
-        <div><b>${d.top_boxes.map(b=>esc(b.type)).join(' · ')}</b>top-level boxes</div>
-        <div><b>${fmtBytes(d.modelled_seek_bytes)}</b>modelled for 10 seeks</div>
-      </div>
-      <pre>${esc(JSON.stringify({moov_offset:d.moov_offset, moov_size:d.moov_size,
-        moov_before_mdat:d.moov_before_mdat, model_notes:d.model_notes,
-        first_ranges:d.stats.first_ranges}, null, 2))}</pre>`;
-    loadTransfers();
-  }catch(e){
-    $('spikeOut').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  if(S.view === "grid"){
+    el.innerHTML = `<div class="section-h"><h2>${esc(S.path||"All footage")}</h2>
+        <span class="meta">${folders.length + S.assets.length} item${(folders.length+S.assets.length)===1?"":"s"} · from local catalogue</span></div>
+      <div class="grid">${folders.map(folderCard).join("")}${S.assets.map(a => `
+        <div class="card ${a.id===S.assetId?"on":""}" data-asset="${a.id}">
+          <div class="thumb"><img src="${thumbFor(a)}" alt="">
+            <span class="kind">${esc(a.media_kind||"file")}</span>
+          </div>
+          <div class="info">
+            <div class="nm" title="${esc(a.rel_path)}">${esc(a.name)}</div>
+            <div class="meta"><span>${fmtB(a.size_bytes)}</span>${statePill(a)}</div>
+          </div>
+        </div>`).join("")}</div>`;
+  } else {
+    el.innerHTML = `<div class="section-h"><h2>${esc(S.path||"All footage")}</h2>
+        <span class="meta">${S.assets.length} items</span></div>
+      <div class="rows">
+        <div class="row" style="cursor:default;color:var(--dim-2);font-size:10.5px;
+             text-transform:uppercase;letter-spacing:.07em">
+          <div>Name</div><div>Size</div><div>Kind</div><div>Availability</div></div>
+        ${folders.map(f => `
+        <div class="row" data-folder="${esc(f.path)}">
+          <div class="nm">▤ ${esc(f.name)}</div>
+          <div class="dim">${f.file_count} items</div>
+          <div class="dim">folder</div>
+          <div><span class="pill">catalogue</span></div>
+        </div>`).join("")}
+        ${S.assets.map(a => `
+        <div class="row ${a.id===S.assetId?"on":""}" data-asset="${a.id}">
+          <div class="nm">${esc(a.name)}</div>
+          <div class="dim">${fmtB(a.size_bytes)}</div>
+          <div class="dim">${esc(a.media_kind||"")}</div>
+          <div>${statePill(a)}</div>
+        </div>`).join("")}
+      </div>`;
   }
+  document.querySelectorAll("[data-asset]").forEach(el => el.onclick = () => selectAsset(el.dataset.asset));
+  document.querySelectorAll("[data-folder]").forEach(el => el.onclick = () => browse(el.dataset.folder));
 }
 
-async function showPreview(id){
-  const r = await fetch('/preview/'+encodeURIComponent(id));
-  if(!r.ok){ $('files').insertAdjacentHTML('beforeend',
-     `<div class="err" style="padding:8px">No readable preview: ${r.status}</div>`); return; }
-  const b = await r.blob();
-  const url = URL.createObjectURL(b);
-  $('files').insertAdjacentHTML('afterbegin',
-    `<div style="padding:8px"><img src="${url}" style="max-width:100%;border-radius:8px;border:1px solid var(--line)">
-     <div class="hint">Cached preview served from the host cache — this is <b>not</b> the original.</div></div>`);
+/* ---------------- search ---------------- */
+let searchTimer;
+$("q").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 220);
+});
+$("q").addEventListener("keydown", e => { if(e.key === "Escape"){ $("q").value=""; browse(S.path); } });
+
+async function runSearch(){
+  const q = $("q").value.trim();
+  if(!q){ browse(S.path); return; }
+  if(S.mode === "semantic"){ renderSemanticPlanned(q); return; }
+  const d = await api("/api/search?q="+encodeURIComponent(q));
+  S.assets = d.results.map(r => ({...r}));
+  $("crumbs").innerHTML = `<b>“${esc(q)}”</b> <span class="pill">${d.count} match${d.count===1?"":"es"}</span>
+    <span class="pill">offline-capable index</span>`;
+  if(!d.results.length){
+    $("content").innerHTML = `<div class="empty" style="margin-top:22px">
+      <b>Nothing matched “${esc(q)}”</b>
+      Search covers filenames, folder paths, tags and transcripts stored on this host.
+      Semantic/AI search is not indexed yet — see the AI index page.</div>`;
+    return;
+  }
+  renderAssets({root_online:true});
 }
 
-async function doSearch(){
-  const q = $('q').value.trim(); if(!q) return;
-  const d = await api('/api/search?q='+encodeURIComponent(q));
-  if(!d.results.length){ $('files').innerHTML = '<div class="hint">No matches in the local catalogue.</div>'; return; }
-  $('crumb').innerHTML = `<b>search:</b> ${esc(q)} <span class="badge">${d.count} result(s) · offline-capable</span>`;
-  $('folders').innerHTML = '<button class="ghost" onclick="browse(S.rootId, S.path)">← back to folder</button>';
-  $('files').innerHTML = d.results.map(f => {
-    const a = f.availability||{};
-    return `<div class="file">
-      <span class="st ${a.state}">${esc(a.state_label||a.state)}</span>
-      <span class="nm">${esc(f.rel_path)}</span>
-      <span class="meta">${fmtBytes(f.size_bytes)}</span>
+function renderSemanticPlanned(q){
+  const cap = S.capabilities;
+  $("crumbs").innerHTML = `<b>Semantic</b> <span class="pill planned">not indexed on this host</span>`;
+  $("content").innerHTML = `
+    <div class="banner" style="margin-top:14px">
+      <b>Semantic search is not running.</b> This build has no vision/audio index: no scene
+      detection, no face clustering, no transcript embeddings. The blueprint requires these
+      as active V1 features, and they are the next build slice — but this host cannot do
+      them yet (no ffmpeg, no whisper, no vision models installed).
+    </div>
+    <div class="section-h"><h2>What would run here</h2>
+      <span class="meta">all on-host, nothing uploaded</span></div>
+    <div class="rows">
+      ${[
+        ["Scene + object detection","YOLOX / RT-DETR (Apache-2.0)","planned"],
+        ["Face / person clustering","YuNet + SFace (Apache-2.0)","planned"],
+        ["Speech → transcript","whisper.cpp (MIT), weights MIT","planned"],
+        ["Semantic text search","local embeddings, pinned licence","planned"],
+        ["Keyword search over metadata","SQLite FTS5 — running now","live"],
+      ].map(([a,b,c]) => `<div class="row" style="grid-template-columns:1.1fr 1.4fr 90px;cursor:default">
+        <div class="nm">${esc(a)}</div><div class="dim">${esc(b)}</div>
+        <div><span class="pill ${c==="live"?"live":"planned"}">${c}</span></div></div>`).join("")}
+    </div>
+    <div class="banner info" style="margin-top:14px">
+      Your query “${esc(q)}” would be answered here once the index exists. Until then,
+      switch to <b>Catalogue</b> to search what this host actually knows.
     </div>`;
-  }).join('');
 }
-function clearSearch(){ $('q').value=''; browse(S.rootId, S.path); }
+
+/* ---------------- inspector ---------------- */
+async function selectAsset(id){
+  S.assetId = id; S.tab = "details";
+  document.querySelectorAll("[data-tab]").forEach(b =>
+    b.classList.toggle("on", b.dataset.tab === "details"));
+  renderAssets({root_online:true});
+  await loadAsset();
+}
+
+async function loadAsset(){
+  if(!S.assetId){ renderInspector(); return; }
+  const a = await api("/api/assets/"+encodeURIComponent(S.assetId));
+  S.asset = a;
+  S.comments = (await api(`/api/assets/${encodeURIComponent(S.assetId)}/comments`)).comments || [];
+  S.links = (await api(`/api/review-links?asset_id=${encodeURIComponent(S.assetId)}`)).links || [];
+  $("inspName").textContent = a.name;
+  $("inspSub").innerHTML = `${esc(a.media_kind||"file")} · ${fmtB(a.size_bytes)}
+      ${statePill(a.availability)}`;
+  $("cCount").textContent = S.comments.length ? S.comments.length : "";
+  renderInspector();
+}
+
+function renderInspector(){
+  const body = $("inspBody");
+  if(!S.asset){
+    body.innerHTML = `<div class="empty"><b>Nothing selected</b>
+      Pick an asset to see its details, comments, markers and review links.</div>`;
+    return;
+  }
+  const a = S.asset;
+  if(S.tab === "details") return renderDetails(a);
+  if(S.tab === "comments") return renderComments(a);
+  if(S.tab === "transcript") return renderTranscript(a);
+  if(S.tab === "similar") return renderSimilar(a);
+  if(S.tab === "share") return renderShare(a);
+}
+
+function renderDetails(a){
+  const av = a.availability || {};
+  const st = av.state;
+  const canPlay = st === "original_available";
+  $("inspBody").innerHTML = `
+    <div class="stage">
+      <img src="${thumbFor(a)}" alt="">
+      <div class="badge">${statePill(a)}</div>
+    </div>
+    <div class="scrub">
+      <span class="tc mono">00:00:00:00</span>
+      <input type="range" min="0" max="1000" value="0" disabled>
+      <span class="tc mono">--:--:--:--</span>
+    </div>
+    ${canPlay
+      ? `<div class="banner info">Original is on the host drive and reachable right now.
+           Playback here is not implemented yet — video decode needs the ffmpeg tier.</div>`
+      : `<div class="banner bad">Original is <b>not reachable</b> (${esc(av.state_label||st)}).
+           Metadata and comments still work. Reconnect the host drive to read the file.</div>`}
+    ${markerBanner(a)}
+
+    <div class="section-h"><h2>Details</h2></div>
+    <dl class="kv">
+      <dt>File</dt><dd>${esc(a.name)}</dd>
+      <dt>Path</dt><dd class="mono" style="font-size:11px">${esc(a.rel_path)}</dd>
+      <dt>Size</dt><dd>${fmtB(a.size_bytes)}</dd>
+      <dt>Asset ID</dt><dd class="mono" style="font-size:10.5px">${esc(a.id)}</dd>
+      <dt>Fingerprint</dt><dd class="mono" style="font-size:10.5px">${esc((a.fingerprint||"").slice(0,24))}…</dd>
+      <dt>Probe</dt><dd>${esc(a.probe_state||"unprobed")} · no codec/duration yet (needs ffprobe)</dd>
+      <dt>Version</dt><dd>${esc(a.version_label||"v1")} <span class="pill planned">stacking: not built</span></dd>
+    </dl>
+
+    <div class="section-h"><h2>Selects</h2><span class="meta">bound to this asset id</span></div>
+    ${renderSelectRow(a)}`;
+  wireMarkerButtons(a);
+  wireSelectButtons(a);
+}
+
+function markerBanner(a){
+  const n = (S.comments||[]).filter(c => c.timecode_ms != null).length;
+  if(!n) return "";
+  return `<div class="banner info">
+     <b>${n} timecoded note${n===1?"":"s"}</b> on ${esc(a.version_label||"v1")}.
+     <button class="btn ghost" style="padding:2px 8px;margin-left:6px"
+       onclick="exportMarkers('${a.id}')">Export marker CSV</button>
+     <div style="margin-top:5px;color:#7ba7c9">Not yet verified as a marker import in Premiere or Resolve.</div>
+   </div>`;
+}
+
+function renderSelectRow(a){
+  const cur = S.selects[a.id]?.decision;
+  const mk = (k, label) => `<button class="mk ${k} ${cur===k?"on":""}" data-sel="${k}">${label}</button>`;
+  return `<div class="sel"><span class="nm">${esc(a.name)}</span>
+    <div class="mark-btns">
+      ${mk("keep","Keep")}${mk("maybe","Maybe")}${mk("reject","Reject")}
+    </div></div>`;
+}
+
+function wireSelectButtons(a){
+  document.querySelectorAll("[data-sel]").forEach(btn => btn.onclick = async () => {
+    try{
+      const r = await api(`/api/assets/${encodeURIComponent(a.id)}/select`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({decision: btn.dataset.sel, reviewer: S.viewer})});
+      S.selects[a.id] = r;
+      toast(`Marked ${btn.dataset.sel} by ${S.viewer}`);
+      renderDetails(a);
+    }catch(e){ toast(e.message); }
+  });
+}
+
+function wireMarkerButtons(a){
+  document.querySelectorAll("[data-marker]").forEach(btn => btn.onclick = () => {
+    window.open(`/api/assets/${encodeURIComponent(a.id)}/markers.csv`, "_blank");
+  });
+}
+
+function renderComments(a){
+  const roots = S.comments.filter(c => !c.parent_id);
+  const repliesOf = id => S.comments.filter(c => c.parent_id === id);
+  const total = S.comments.length;
+  $("inspBody").innerHTML = `
+    <div class="banner info">
+      Comments are bound to <b>${esc(a.version_label||"v1")}</b> at ${S.fps} fps.
+      They never move to a newer cut silently.
+    </div>
+    ${total ? "" : `<div class="empty"><b>No notes yet</b>
+       Add a timestamped note, or share a review link so a client can comment without an account.</div>`}
+    <div id="thread">
+      ${roots.map(c => commentHtml(c, a) + repliesOf(c.id).map(r => commentHtml(r, a, true)).join("")).join("")}
+    </div>
+    <div class="compose">
+      <textarea id="cBody" placeholder="Leave a comment… use “at” to pin the current timecode"></textarea>
+      <div class="foot">
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="tc-chip" id="tcToggle">+ timecode</span>
+          <span class="tc mono" id="tcVal" style="font-size:10.5px;color:var(--dim-2)">—</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="who" id="cWho" value="${esc(S.viewer)}" title="Your display name">
+          <select id="cVis" class="who" style="width:92px" title="Visibility">
+            <option value="internal">internal</option>
+            <option value="shared">shared</option>
+          </select>
+          <button class="btn primary" id="cSend">Comment</button>
+        </div>
+      </div>
+    </div>`;
+  wireCompose(a);
+}
+
+function commentHtml(c, a, isReply=false){
+  const initials = (c.author||"?").trim().slice(0,2).toUpperCase();
+  return `<div class="comment ${isReply?"is-reply":""} ${c.resolved_at?"resolved":""}">
+    <div class="c-head">
+      <div class="avatar">${esc(initials)}</div>
+      <span class="c-author">${esc(c.author)}</span>
+      ${c.author_kind==="guest"?'<span class="pill">guest</span>':''}
+      ${c.visibility==="internal"?'<span class="pill planned">internal</span>':''}
+      <span class="c-when">${ago(c.created_at)}</span>
+    </div>
+    <div class="c-body">${c.timecode?`<span class="tc-chip" data-seek="${c.timecode_ms}">${esc(c.timecode)}</span>`:""}${esc(c.body)}</div>
+    <div class="c-actions">
+      <button data-reply="${c.id}">Reply</button>
+      <button data-react="${c.id}">☺ ${c.reactions?.length||0}</button>
+      <button data-resolve="${c.id}">${c.resolved_at?"Reopen":"Resolve"}</button>
+    </div>
+  </div>`;
+}
+
+function wireCompose(a){
+  let tcOn = false;
+  const toggle = $("tcToggle");
+  if(toggle) toggle.onclick = () => {
+    tcOn = !tcOn;
+    $("tcVal").textContent = tcOn ? "00:00:12:00 (sample position)" : "—";
+    toggle.style.borderColor = tcOn ? "var(--lime)" : "";
+  };
+  const send = $("cSend");
+  if(send) send.onclick = async () => {
+    const body = $("cBody").value.trim();
+    if(!body) return;
+    try{
+      await api(`/api/assets/${encodeURIComponent(a.id)}/comments`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          body, author: $("cWho").value || "member",
+          visibility: $("cVis").value,
+          timecode_ms: tcOn ? 12000 : null, fps: S.fps,
+          version_label: a.version_label || "v1"
+        })});
+      toast("Comment added");
+      await loadAsset(); S.tab = "comments"; renderComments(S.asset);
+    }catch(e){ toast(e.message); }
+  };
+  document.querySelectorAll("[data-resolve]").forEach(b => b.onclick = async () => {
+    await api(`/api/comments/${b.dataset.resolve}/resolve`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({resolved:true, actor:S.viewer})});
+    await loadAsset(); renderComments(S.asset);
+  });
+  document.querySelectorAll("[data-react]").forEach(b => b.onclick = async () => {
+    await api(`/api/comments/${b.dataset.react}/react`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({emoji:"🙌", actor:S.viewer})});
+    await loadAsset(); renderComments(S.asset);
+  });
+  document.querySelectorAll("[data-reply]").forEach(b => b.onclick = () => {
+    const id = b.dataset.reply;
+    const c = S.comments.find(x => x.id === id);
+    $("cBody").value = "@" + (c?c.author:"") + " ";
+    $("cBody").focus();
+    $("cBody").dataset.parent = id;
+  });
+}
+
+function renderTranscript(a){
+  $("inspBody").innerHTML = `
+    <div class="empty"><b>Transcript not available</b>
+      Speech transcription has not run on this host. It requires whisper.cpp plus
+      decoded audio, and neither is installed here.<br><br>
+      <span style="color:var(--dim-2)">Chosen model: whisper.cpp + Whisper weights — MIT,
+      runs on CPU, nothing leaves this machine.</span></div>
+    <div class="section-h"><h2>Search coverage as a result</h2></div>
+    <div class="banner info">Until transcription runs, searching this clip only matches its
+      <b>filename and folder path</b>. Spoken content is not searchable yet.</div>`;
+}
+
+function renderSimilar(a){
+  $("inspBody").innerHTML = `
+    <div class="empty"><b>Similar items need the AI index</b>
+      Visual similarity requires embeddings from the vision pipeline (not installed).
+      This is not a placeholder for real results — nothing is being computed.</div>
+    <div class="section-h"><h2>Deterministic match available now</h2></div>
+    <div class="banner info">The catalogue can compare <b>content fingerprints</b> to find
+      duplicate copies of the same bytes across drives. That works offline.</div>
+    <button class="btn" id="findDupes">Find identical files</button>
+    <div id="dupes" style="margin-top:10px"></div>`;
+  const btn = $("findDupes");
+  if(btn) btn.onclick = async () => {
+    $("dupes").innerHTML = `<div class="banner">Scanning catalogue for matching fingerprint…</div>`;
+    const d = await api("/api/search?q="+encodeURIComponent(a.name.split(".")[0]));
+    const same = d.results.filter(r => r.fingerprint && r.fingerprint === a.fingerprint);
+    $("dupes").innerHTML = same.length > 1
+      ? same.map(r => `<div class="sel"><span class="nm">${esc(r.rel_path)}</span>
+          <span class="pill">same bytes</span></div>`).join("")
+      : `<div class="banner info">No other copy of these exact bytes in the catalogue.</div>`;
+  };
+}
+
+function renderShare(a){
+  const links = S.links || [];
+  $("inspBody").innerHTML = `
+    <div class="banner info">A review link is <b>scoped to this one asset and version</b>,
+      needs no account, and never exposes the folder tree.</div>
+    <div class="section-h"><h2>Create review link</h2></div>
+    <div style="display:grid;gap:7px">
+      <label style="font-size:11px;color:var(--dim-2)">Expires
+        <select id="lkExp" class="who" style="width:100%;margin-top:4px">
+          <option value="24">24 hours</option>
+          <option value="168" selected>7 days</option>
+          <option value="720">30 days</option>
+          <option value="">Never</option>
+        </select></label>
+      <label style="font-size:11px;color:var(--dim-2)">Passphrase (optional)
+        <input id="lkPass" class="who" style="width:100%;margin-top:4px" placeholder="leave empty for none"></label>
+      <label style="display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--dim)">
+        <input type="checkbox" id="lkComments" checked> allow comments</label>
+      <label style="display:flex;gap:7px;align-items:center;font-size:11.5px;color:var(--dim)">
+        <input type="checkbox" id="lkWatermark"> watermark label</label>
+      <button class="btn primary" id="lkCreate" style="margin-top:4px">Create link</button>
+    </div>
+    <div id="lkOut"></div>
+    <div class="section-h"><h2>Links</h2><span class="meta">${links.length}</span></div>
+    ${links.length ? links.map(l => `
+      <div class="sel" style="align-items:flex-start;flex-direction:column;gap:4px">
+        <div style="display:flex;width:100%;gap:8px;align-items:center">
+          <span class="pill ${l.status==="active"?"live":"offline"}">${esc(l.status)}</span>
+          <span style="font-size:11.5px;color:var(--dim)">${esc(l.version_label)}</span>
+          <span style="flex:1"></span>
+          ${l.status==="active"?`<button class="btn ghost" style="padding:2px 8px" data-revoke="${l.id}">Revoke</button>`:""}
+        </div>
+        <div style="font-size:11px;color:var(--dim-2)">
+          created ${ago(l.created_at)} · ${l.expires_at?("expires "+ago(l.expires_at).replace(" ago","")):"never expires"}
+          · ${l.passphrase_required?"passphrase":"no passphrase"}
+        </div>
+      </div>`).join("") : `<div class="empty">No links yet.</div>`}`;
+  $("lkCreate").onclick = async () => {
+    const body = {asset_id: a.id, version_label: a.version_label||"v1",
+      expires_in_hours: $("lkExp").value === "" ? null : Number($("lkExp").value),
+      passphrase: $("lkPass").value || null,
+      allow_comments: $("lkComments").checked,
+      watermark: $("lkWatermark").checked, created_by: S.viewer};
+    try{
+      const r = await api("/api/review-links", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+      $("lkOut").innerHTML = `<div class="banner" style="margin-top:10px">
+        <b>Link created.</b> Copy it now — the token is shown once.
+        ${r.passphrase_required?"<br>Passphrase required: send it separately.":""}
+        <div class="linkbox"><input readonly value="${esc(r.url)}" id="lkUrl">
+          <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('lkUrl').value);toast('Copied')">Copy</button></div>
+        <div style="margin-top:6px"><a href="${esc(r.url_path)}" target="_blank" style="color:#9cc7e8">Open guest view →</a></div>
+      </div>`;
+      S.links = (await api(`/api/review-links?asset_id=${encodeURIComponent(a.id)}`)).links;
+    }catch(e){ toast(e.message); }
+  };
+  document.querySelectorAll("[data-revoke]").forEach(b => b.onclick = async () => {
+    await api(`/api/review-links/${b.dataset.revoke}/revoke`, {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({actor:S.viewer})});
+    S.links = (await api(`/api/review-links?asset_id=${encodeURIComponent(a.id)}`)).links;
+    renderShare(S.asset); toast("Link revoked");
+  });
+}
+
+window.exportMarkers = async (assetId) => {
+  const r = await fetch(`/api/assets/${assetId}/markers.csv`);
+  if(!r.ok){ toast("Export failed"); return; }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `markers-${assetId.slice(0,8)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast("Marker CSV downloaded — import path unverified in NLEs");
+};
+
+/* ---------------- tabs / view toggles ---------------- */
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
+  S.tab = b.dataset.tab;
+  document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("on", x === b));
+  renderInspector();
+});
+document.querySelectorAll("#viewSeg button").forEach(b => b.onclick = () => {
+  S.view = b.dataset.view;
+  document.querySelectorAll("#viewSeg button").forEach(x => x.classList.toggle("on", x === b));
+  renderAssets({root_online:true});
+});
+document.querySelectorAll("#modeSeg button").forEach(b => b.onclick = () => {
+  S.mode = b.dataset.mode;
+  document.querySelectorAll("#modeSeg button").forEach(x => x.classList.toggle("on", x === b));
+  runSearch();
+});
+
+/* ---------------- routes: selects / review / ai / nle / mount ---------------- */
+const routes = { browse, selects, review, ai, nle: nlePage, mount };
+window.addEventListener("hashchange", () => route());
+function route(){
+  const r = (location.hash||"#browse").slice(1);
+  S.route = r;
+  renderNav();
+  (routes[r] || browse)();
+}
+
+async function loadSelects(){
+  try{
+    const d = await api("/api/selects");
+    S.selects = {};
+    d.selects.forEach(s => S.selects[s.asset_id] = s);
+  }catch(e){}
+}
+
+async function selects(){
+  await loadSelects();
+  const rows = Object.values(S.selects);
+  $("crumbs").innerHTML = `<b>Selects</b> <span class="pill">${rows.length} marked</span>
+     <span class="pill">asset-bound</span>`;
+  const bucket = k => rows.filter(r => r.decision === k);
+  if(!rows.length){
+    $("content").innerHTML = `<div class="empty" style="margin-top:20px">
+      <b>No selects yet</b>Open an asset and mark it Keep / Maybe / Reject.
+      Selections bind to the stable asset id, so they survive the drive being renamed.</div>`;
+    return;
+  }
+  $("content").innerHTML = `
+    <div class="section-h"><h2>Selects list</h2>
+      <span class="meta">hand this to an editor</span></div>
+    <div class="selects">
+      ${rows.map(r => `
+        <div class="sel">
+          <span class="pill ${r.decision==="keep"?"live":r.decision==="reject"?"offline":"cached"}">${esc(r.decision)}</span>
+          <span class="nm" data-open="${r.asset_id}">${esc(r.name)}</span>
+          <span class="dim" style="font-size:11px;color:var(--dim-2)">${esc(r.reviewer)}</span>
+        </div>`).join("")}
+    </div>
+    <div class="banner info" style="margin-top:14px">
+      ${bucket("keep").length} keep · ${bucket("maybe").length} maybe · ${bucket("reject").length} reject.
+      Export to a CSV the editor can open beside the NLE:
+      <button class="btn" style="padding:3px 9px;margin-left:6px" onclick="exportSelects()">Download selects CSV</button>
+    </div>`;
+  document.querySelectorAll("[data-open]").forEach(el => el.onclick = () => selectAsset(el.dataset.open));
+}
+
+window.exportSelects = () => {
+  const rows = Object.values(S.selects);
+  const head = "decision,asset_id,file,path,reviewer,note\n";
+  const body = rows.map(r => [r.decision, r.asset_id, r.name, r.rel_path||"", r.reviewer,
+    (r.note||"").replace(/,/g," ")].join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([head+body], {type:"text/csv"}));
+  const a = document.createElement("a"); a.href = url; a.download = "selects.csv"; a.click();
+  URL.revokeObjectURL(url); toast("Selects CSV downloaded");
+};
+
+async function review(){
+  const d = await api("/api/review-links");
+  $("crumbs").innerHTML = `<b>Review links</b> <span class="pill">${d.links.length}</span>`;
+  $("content").innerHTML = `
+    <div class="banner info">Client links need no account. Each is scoped to one asset and
+      version, can expire, can be revoked, and never reveals your folder tree.</div>
+    <div class="section-h"><h2>All links</h2></div>
+    ${d.links.length ? `<div class="rows">${d.links.map(l => `
+      <div class="row" style="grid-template-columns:1fr 110px 120px 90px;cursor:default">
+        <div class="nm mono" style="font-size:11px">${esc(l.id.slice(0,8))}… · ${esc(l.version_label)}</div>
+        <div><span class="pill ${l.status==="active"?"live":"offline"}">${esc(l.status)}</span></div>
+        <div class="dim">${l.expires_at?esc(l.expires_at.slice(0,16).replace("T"," ")):"never"}</div>
+        <div class="dim">${l.passphrase_required?"passphrase":"open"}</div>
+      </div>`).join("")}</div>`
+      : `<div class="empty">No links yet. Select an asset → Share → Create link.</div>`}`;
+}
+
+async function ai(){
+  await renderSemanticPlanned("(example) sunrise over a busy street, two people talking");
+  $("crumbs").innerHTML = `<b>AI index</b> <span class="pill planned">not running</span>`;
+}
+
+async function nlePage(){
+  const caps = S.capabilities || await api("/api/nle/capabilities");
+  $("crumbs").innerHTML = `<b>NLE projects</b> <span class="pill planned">nothing verified</span>`;
+  $("content").innerHTML = `
+    <div class="banner bad">No NLE integration has been tested. Every row below is
+      <b>unverified</b> until a real test is recorded on your machines.</div>
+    ${caps.adapters.map(a => `
+      <div class="sel" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:10px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <b style="font-size:13px">${esc(a.nle_name)}</b>
+          <span class="pill ${a.mode==="vendor_hosted"?"cached":"live"}">
+            ${a.mode==="vendor_hosted"?"vendor-hosted":"private / controlled"}</span>
+          <span class="pill planned">${esc(a.verification_status)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--dim)">${esc(a.display_name)}</div>
+        <div style="font-size:11.5px;color:var(--dim-2)">Authoritative state:
+          <b style="color:var(--dim)">${esc(a.authoritative_state)}</b> ·
+          originals stay local · media sync ${esc(a.media_sync_default)}</div>
+        <div style="font-size:11.5px;color:var(--dim-2)">Your responsibility:
+          ${esc(a.user_side_access)}</div>
+        <details style="font-size:11.5px;color:var(--dim)">
+          <summary style="cursor:pointer">What is NOT proven (${a.unverified_claims.length})</summary>
+          <ul style="margin:6px 0 0 16px;padding:0">
+            ${a.unverified_claims.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+        </details>
+      </div>`).join("")}
+    <div class="banner info">${esc(caps.nle_access_note)}</div>`;
+}
+
+async function mount(){
+  const d = await api("/api/dav/info");
+  const url = location.origin + "/dav/";
+  $("crumbs").innerHTML = `<b>Mount</b> <span class="pill live">read-only WebDAV</span>`;
+  $("content").innerHTML = `
+    <div class="section-h"><h2>Mount this drive</h2><span class="meta">no third-party driver</span></div>
+    <div class="banner info">${esc(d.protocol)} at <span class="mono">${esc(url)}</span><br>
+      Password = the host token from <span class="mono">data/catalogue.token</span>.</div>
+    <dl class="kv">
+      <dt>Auth</dt><dd>${esc(d.auth)}</dd>
+      <dt>Security</dt><dd>${esc(d.transport_security)}</dd>
+      <dt>Offline</dt><dd>${esc(d.offline_semantics)}</dd>
+      <dt>Depth</dt><dd>${esc(d.depth)}</dd>
+      <dt>Writes</dt><dd>${esc(d.write_operations)}</dd>
+    </dl>
+    <div class="section-h"><h2>Steps</h2></div>
+    <div class="rows">
+      <div class="row" style="grid-template-columns:120px 1fr;cursor:default">
+        <div class="nm">macOS</div><div class="dim">Finder → Go → Connect to Server → ${esc(url)}</div></div>
+      <div class="row" style="grid-template-columns:120px 1fr;cursor:default">
+        <div class="nm">Windows</div><div class="dim">Raise BasicAuthLevel + FileSizeLimitInBytes, then
+          <span class="mono">net use Z: ${esc(url)} /user:editor &lt;token&gt;</span></div></div>
+      <div class="row" style="grid-template-columns:120px 1fr;cursor:default">
+        <div class="nm">rclone</div><div class="dim">webdav remote + <span class="mono">--vfs-cache-mode full</span>
+          (required for video)</div></div>
+    </div>
+    <div class="banner" style="margin-top:12px">Full instructions: <b>docs/WEBDAV_MOUNT.md</b>.
+      Not yet verified with any OS client or NLE.</div>`;
+}
 
 async function loadTransfers(){
-  const d = await api('/api/transfers?limit=1');
-  $('wire').textContent = fmtBytes(d.total_bytes)+" served · "+d.total_requests+" range requests";
-}
-
-async function loadDav(){
   try{
-    const d = await api('/api/dav/info');
-    const url = location.origin + '/dav/';
-    $('dav').innerHTML = `
-      <div class="root">
-        <div class="name">${esc(d.protocol)}</div>
-        <div class="path">${esc(url)}</div>
-        <div style="margin:6px 0">
-          <span class="tag">no third-party driver</span>
-          <span class="tag">no licence cost</span>
-          <span class="tag" style="color:#e3b341">no TLS yet — LAN/VPN only</span>
-        </div>
-        <div class="meta" style="color:var(--dim);font-size:11.5px">
-          ${esc(d.offline_semantics)}<br>
-          ${esc(d.write_operations)}
-        </div>
-      </div>
-      <div class="hint">Mount steps for macOS, Windows and rclone are in
-        <b>docs/WEBDAV_MOUNT.md</b>. Password = the host token.</div>`;
-  }catch(e){ $('dav').innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
+    const d = await api("/api/transfers?limit=1");
+    $("wire").textContent = `${fmtB(d.total_bytes)} served · ${d.total_requests} range requests`;
+  }catch(e){}
 }
 
-async function loadNle(){
-  const d = await api('/api/nle/capabilities');
-  $('nle').innerHTML = d.adapters.map(a => `
-    <div class="root">
-      <div class="name">${esc(a.nle_name)} — ${a.mode==='vendor_hosted'?'vendor-hosted':'private/controlled'}</div>
-      <div class="path">${esc(a.display_name)}</div>
-      <div style="margin:6px 0">
-        <span class="tag">originals stay local</span>
-        <span class="tag">media sync: ${esc(a.media_sync_default)}</span>
-        <span class="tag" style="color:#e3b341">${esc(a.verification_status)}</span>
-        ${a.account_required?'<span class="tag">vendor account required</span>':'<span class="tag">no vendor account</span>'}
-      </div>
-    </div>`).join('') +
-    `<div class="hint" style="margin-top:6px">${esc(d.nle_access_note)}</div>`;
-}
+document.addEventListener("keydown", e => {
+  if(e.key === "/" && document.activeElement.tagName !== "INPUT"
+     && document.activeElement.tagName !== "TEXTAREA"){ e.preventDefault(); $("q").focus(); }
+});
 
-boot();
-setInterval(loadTransfers, 5000);
+boot().then(()=>route());
 </script>
 </body>
 </html>

@@ -29,7 +29,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ..core import catalogue, db, scanner
+from ..core import catalogue, db, review, scanner
 from ..core.db import now_iso
 from ..net import http_range
 from ..spikes import mp4_remote_open
@@ -179,6 +179,12 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         qs = urllib.parse.parse_qs(parsed.query)
         try:
+            if path.startswith("/r/"):
+                return self._guest_page(path.split("/", 2)[2])
+            if path.startswith("/api/guest/") and path.endswith("/comments") and self.command == "POST":
+                return self._guest_comment(path)
+            if path.startswith("/api/guest/"):
+                return self._guest_data(path)
             if path == "/dav" or path.startswith("/dav/"):
                 return self._handle_dav()
             if path.startswith("/media/"):
@@ -204,6 +210,33 @@ class Handler(BaseHTTPRequestHandler):
                 return self._search(qs)
             if path == "/api/assets":
                 return self._assets(qs)
+            # ---- review: comments, links, selects, markers ----
+            if path.startswith("/api/assets/") and path.endswith("/comments"):
+                return self._comments(path)
+            if path.startswith("/api/comments/"):
+                return self._comment_action(path)
+            if path == "/api/review-links" and self.command == "POST":
+                return self._create_review_link()
+            if path == "/api/review-links" and self.command == "GET":
+                conn = self._conn()
+                try:
+                    return self._json(200, {"links": review.list_links(
+                        conn, asset_id=qs.get("asset_id", [None])[0])})
+                finally:
+                    conn.close()
+            if path.startswith("/api/review-links/"):
+                return self._review_link_action(path)
+            if path.startswith("/api/assets/") and path.endswith("/markers.csv"):
+                return self._markers_csv(path)
+            if path == "/api/selects" and self.command == "GET":
+                conn = self._conn()
+                try:
+                    return self._json(200, {"selects": review.list_selects(
+                        conn, qs.get("decision", [None])[0])})
+                finally:
+                    conn.close()
+            if path.startswith("/api/assets/") and path.endswith("/select"):
+                return self._set_select(path)
             if path.startswith("/api/assets/"):
                 return self._asset_detail(path)
             if path == "/api/spike/open":
@@ -233,6 +266,234 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(404, "not_found", "asset not found")
         ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         self._send(200, target.read_bytes(), ctype)
+
+    # -- review API -------------------------------------------------------
+    def _comments(self, path: str):
+        parts = path.strip("/").split("/")           # api, assets, <id>, comments
+        asset_id = parts[2]
+        conn = self._conn()
+        try:
+            if self.command == "POST":
+                body = self._body()
+                try:
+                    c = review.add_comment(
+                        conn, asset_id=asset_id,
+                        body=body.get("body", ""),
+                        author=body.get("author") or "member",
+                        author_kind=body.get("author_kind") or "member",
+                        timecode_ms=body.get("timecode_ms"),
+                        timecode_end_ms=body.get("timecode_end_ms"),
+                        fps=float(body.get("fps") or review.DEFAULT_FPS),
+                        parent_id=body.get("parent_id"),
+                        version_label=body.get("version_label") or "v1",
+                        visibility=body.get("visibility") or "internal",
+                    )
+                except review.ReviewError as exc:
+                    return self._err(400, "invalid_comment", str(exc))
+                return self._json(201, c)
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            version = query.get("version", [None])[0]
+            guest_view = bool(self.headers.get("X-LFMC-Guest"))
+            comments = review.list_comments(conn, asset_id, version,
+                                            include_internal=not guest_view)
+            return self._json(200, {"comments": comments, "count": len(comments)})
+        finally:
+            conn.close()
+
+    def _comment_action(self, path: str):
+        parts = path.strip("/").split("/")           # api, comments, <id>, <action>
+        if len(parts) < 3:
+            return self._err(404, "not_found", "unknown comment route")
+        comment_id = parts[2]
+        action = parts[3] if len(parts) > 3 else ""
+        conn = self._conn()
+        try:
+            if action == "resolve" and self.command == "POST":
+                body = self._body()
+                try:
+                    return self._json(200, review.resolve_comment(
+                        conn, comment_id, bool(body.get("resolved", True)),
+                        body.get("actor") or "member"))
+                except review.ReviewError as exc:
+                    return self._err(404, "not_found", str(exc))
+            if action == "react" and self.command == "POST":
+                body = self._body()
+                try:
+                    return self._json(200, review.react(
+                        conn, comment_id, body.get("emoji", ""), body.get("actor") or "member"))
+                except review.ReviewError as exc:
+                    return self._err(400, "invalid_reaction", str(exc))
+            return self._err(404, "not_found", f"unknown comment action {action!r}")
+        finally:
+            conn.close()
+
+    def _create_review_link(self):
+        if not self._require_auth():
+            return
+        body = self._body()
+        conn = self._conn()
+        try:
+            try:
+                link = review.create_review_link(
+                    conn,
+                    asset_id=body.get("asset_id", ""),
+                    version_label=body.get("version_label") or "v1",
+                    created_by=body.get("created_by") or "owner",
+                    expires_in_hours=body.get("expires_in_hours", 168),
+                    passphrase=body.get("passphrase") or None,
+                    allow_comments=bool(body.get("allow_comments", True)),
+                    allow_download=bool(body.get("allow_download", False)),
+                    watermark=bool(body.get("watermark", False)),
+                    note=body.get("note"),
+                )
+            except review.ReviewError as exc:
+                return self._err(400, "invalid_link", str(exc))
+            # absolute URL for copy/paste; the raw token is returned exactly once
+            host = self.headers.get("Host") or f"127.0.0.1:{self.server.server_address[1]}"
+            link["url"] = f"http://{host}{link['url_path']}"
+            return self._json(201, link)
+        finally:
+            conn.close()
+
+    def _review_link_action(self, path: str):
+        if not self._require_auth():
+            return
+        parts = path.strip("/").split("/")
+        link_id = parts[2]
+        action = parts[3] if len(parts) > 3 else ""
+        conn = self._conn()
+        try:
+            if action == "revoke" and self.command == "POST":
+                try:
+                    return self._json(200, review.revoke_link(conn, link_id,
+                                                              (self._body() or {}).get("actor") or "owner"))
+                except review.ReviewError as exc:
+                    return self._err(404, "not_found", str(exc))
+            links = review.list_links(conn, link_id=link_id)
+            if not links:
+                return self._err(404, "not_found", "unknown review link")
+            return self._json(200, links[0])
+        finally:
+            conn.close()
+
+    def _markers_csv(self, path: str):
+        if not self._require_auth():
+            return
+        parts = path.strip("/").split("/")
+        asset_id = parts[2]
+        conn = self._conn()
+        try:
+            try:
+                csv_text = review.markers_csv(conn, asset_id)
+            except review.ReviewError as exc:
+                return self._err(404, "not_found", str(exc))
+            self._send(200, csv_text.encode("utf-8"), "text/csv; charset=utf-8", {
+                "Content-Disposition": f'attachment; filename="markers-{asset_id[:8]}.csv"',
+                "X-LFMC-Export-Verified": "no",   # never claim NLE round-trip until tested
+            })
+        finally:
+            conn.close()
+
+    def _set_select(self, path: str):
+        if not self._require_auth():
+            return
+        parts = path.strip("/").split("/")
+        asset_id = parts[2]
+        body = self._body()
+        conn = self._conn()
+        try:
+            try:
+                row = review.set_select(
+                    conn, asset_id=asset_id,
+                    reviewer=body.get("reviewer") or "producer",
+                    decision=body.get("decision", ""),
+                    note=body.get("note"),
+                    timecode_ms=body.get("timecode_ms"))
+            except review.ReviewError as exc:
+                return self._err(400, "invalid_select", str(exc))
+            return self._json(200, row)
+        finally:
+            conn.close()
+
+    # -- guest review (accountless) ---------------------------------------
+    def _guest_page(self, token: str):
+        """Serve the accountless review page. Contains NO catalogue data: it fetches
+        its own asset via /api/guest/<token> after the passphrase check."""
+        page = (WEB_ROOT / "guest.html")
+        if not page.is_file():
+            return self._err(404, "not_found", "guest page missing")
+        return self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+
+    def _guest_data(self, path: str):
+        parts = path.strip("/").split("/")           # api, guest, <token>
+        token = parts[2]
+        passphrase = self.headers.get("X-LFMC-Passphrase") or None
+        conn = self._conn()
+        try:
+            try:
+                resolved = review.resolve_link(conn, token, passphrase)
+            except review.ReviewError as exc:
+                code = 401 if str(exc) in ("passphrase_required", "passphrase_invalid") else 410
+                return self._err(code, str(exc),
+                                 "This review link is not available.",
+                                 "Ask the sender for a new link or the passphrase.")
+            asset = resolved["asset"]
+            link = resolved["link"]
+            comments = review.list_comments(conn, asset["id"], link["version_label"],
+                                            include_internal=False)
+            state = catalogue.asset_state(conn, catalogue.get_asset(conn, asset["id"]))
+            # A guest sees ONE clip. Root label, root id and last-seen timestamps
+            # would leak the shape of the team's drives, so they never leave here.
+            state = {k: v for k, v in state.items()
+                     if k not in ("root_id", "root_label", "root_last_seen", "asset_id")}
+            return self._json(200, {
+                "asset": {
+                    "id": asset["id"], "name": asset["name"],
+                    "size_bytes": asset["size_bytes"], "media_kind": asset["media_kind"],
+                },
+                "version_label": link["version_label"],
+                "allow_comments": bool(link["allow_comments"]),
+                "allow_download": bool(link["allow_download"]),
+                "watermark": bool(link["watermark"]),
+                "expires_at": link["expires_at"],
+                "availability": state,
+                "comments": comments,
+            })
+        finally:
+            conn.close()
+
+    def _guest_comment(self, path: str):
+        parts = path.strip("/").split("/")           # api, guest, <token>, comments
+        token = parts[2]
+        body = self._body()
+        passphrase = self.headers.get("X-LFMC-Passphrase") or None
+        conn = self._conn()
+        try:
+            try:
+                resolved = review.resolve_link(conn, token, passphrase)
+            except review.ReviewError as exc:
+                return self._err(410, str(exc), "This review link is not available.")
+            link = resolved["link"]
+            if not link["allow_comments"]:
+                return self._err(403, "comments_disabled", "Commenting is disabled on this link.")
+            author = (body.get("author") or "Guest reviewer").strip()[:80] or "Guest reviewer"
+            try:
+                c = review.add_comment(
+                    conn, asset_id=resolved["asset"]["id"],
+                    body=body.get("body", ""), author=author, author_kind="guest",
+                    timecode_ms=body.get("timecode_ms"),
+                    timecode_end_ms=body.get("timecode_end_ms"),
+                    fps=float(body.get("fps") or review.DEFAULT_FPS),
+                    parent_id=body.get("parent_id"),
+                    version_label=link["version_label"],
+                    # Guest comments are team-visible; internal notes stay internal.
+                    visibility="shared",
+                )
+            except review.ReviewError as exc:
+                return self._err(400, "invalid_comment", str(exc))
+            return self._json(201, c)
+        finally:
+            conn.close()
 
     # -- catalogue API ----------------------------------------------------
     def _list_roots(self):

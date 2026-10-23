@@ -24,12 +24,15 @@ cd lfmc
 # 1. Create a synthetic "camera drive" (~168 MB of sparse files) and catalogue it
 python3 -m lfmc.cli seed-demo
 
-# 2. Run the host agent + web UI
+# 2. (optional) add a demo review session: comment thread, selects, guest link
+python3 -m lfmc.cli seed-reviews
+
+# 3. Run the host agent + web UI
 python3 -m lfmc.cli serve --port 8765
 #    → open http://localhost:8765
 #    → a bearer token is written to data/catalogue.token (mode 0600)
 
-# 3. Or run without token checks — DEMO ONLY, synthetic data only
+# 4. Or run without token checks — DEMO ONLY, synthetic data only
 python3 -m lfmc.cli serve --port 8765 --demo
 ```
 
@@ -70,7 +73,7 @@ cd lfmc
 python3 -m unittest discover -s tests -t . -v
 ```
 
-85 tests, ~5 s, no third-party test runner. They cover: range-header parsing, HTTP
+103 tests, ~8 s, no third-party test runner. They cover: range-header parsing, HTTP
 206/416/401/403/409 behaviour, byte accounting, path-traversal containment, catalogue
 persistence across disconnects, move/rename identity, duplicate-content safety, FTS
 search, MP4 box parsing, ranged-open cost, and the NLE residency fail-closed rules.
@@ -95,6 +98,8 @@ curl "localhost:8765/api/spike/open?asset_id=<asset_id>&seeks=10"
 | NLE residency rules fail closed; no silent mode fallback | `tests/test_nle_residency.py` |
 | **Originals open in Premiere / Resolve through a mount** | **NOT TESTED — needs your machines** |
 | **NLE co-editing, locks, conflict recovery** | **NOT TESTED — data layer only** |
+| **Review loop**: threaded timecoded comments, resolve/reactions, internal vs shared visibility, scoped accountless guest links with expiry/passphrase/revocation, selects, marker CSV | `tests/test_review.py` — 18 tests |
+| **UI renders and operates** (boot, browse, inspector, tabs, all routes, no JS errors) | `tools/ui_smoke.js` — 17 assertions in jsdom |
 | **Read-only WebDAV mount point** (PROPFIND, ranges, read-only refusals, offline 503, traversal, Amharic names) | `tests/test_webdav.py` — 22 tests |
 | **An OS client or NLE mounting it** | **NOT TESTED — needs your Mac/Windows + NLE** (`docs/WEBDAV_MOUNT.md`) |
 | **AI search, transcripts, face clustering** | **Not implemented (model licences decided first)** |
@@ -131,6 +136,12 @@ curl "localhost:8765/api/spike/open?asset_id=<asset_id>&seeks=10"
 | GET | `/api/spike/open?asset_id=` | runs the ranged-open measurement against this server |
 | GET | `/api/nle/capabilities` | per-NLE/per-mode matrix incl. unproven claims |
 | POST | `/api/nle/preflight` | fail-closed check for an NLE binding |
+| GET/POST | `/api/assets/{id}/comments` | threaded timecoded comments (internal/shared) |
+| POST | `/api/comments/{id}/resolve` · `/react` | resolve or reopen · react |
+| GET/POST | `/api/review-links` · `POST /api/review-links/{id}/revoke` | accountless guest links |
+| GET | `/r/{token}` · `/api/guest/{token}` | guest review page + its scoped data (no auth) |
+| POST | `/api/assets/{id}/select` · `GET /api/selects` | Keep/Maybe/Reject |
+| GET | `/api/assets/{id}/markers.csv` | timecoded marker export (flagged unverified) |
 | GET | `/api/transfers` · `/api/events` | byte accounting · audit trail |
 
 *Transfer rows are written by the server thread after the body is streamed, so
@@ -147,6 +158,7 @@ client media never enter the log — only asset id, byte offsets, counts and out
 | [`docs/NLE_PREREQUISITES.md`](docs/NLE_PREREQUISITES.md) | user-side Premiere/Resolve access, seat counts, onboarding checklist |
 | [`docs/RISKS.md`](docs/RISKS.md) | hardest-first risk register: mount, cost of mount, NAT, NLE semantics, AI licensing |
 | [`docs/NLE_TEST_LOG.md`](docs/NLE_TEST_LOG.md) | the empty tables your Mac/Windows + NLE runs must fill |
+| [`docs/UI.md`](docs/UI.md) | screen map, what each tab really does, honesty rules, how to verify the UI |
 | [`docs/WEBDAV_MOUNT.md`](docs/WEBDAV_MOUNT.md) | how to mount on macOS/Windows/rclone + the registry defaults that break video |
 | [`docs/PROGRESS.md`](docs/PROGRESS.md) | milestone checklist and what to test locally next |
 
@@ -162,6 +174,7 @@ lfmc/
   lfmc/spikes/  mp4_remote_open.py (ISO-BMFF parser over ranged reads + cost measurement)
   lfmc/web/     index.html (single-file UI, no CDN)
   lfmc/cli.py   init · seed-demo · add-root · scan · status · search · spike-open · nle-matrix · serve
-  tests/        85 stdlib unittest tests
+  tests/        103 stdlib unittest tests
+  tools/        ui_smoke.js (jsdom UI smoke test, dev-only)
   docs/         cost ledger, architecture, blueprint extract, NLE prereqs, risks, test log, progress
 ```

@@ -16,12 +16,14 @@ Blueprint v0.5 · milestone 1 of the build plan (§15) · updated 2026-10-23
 - [x] **NLE residency fail-closed** (no consent → no vendor project; no private server → no private project; no silent fallback; media sync blocked) → tested
 - [x] **Hardest risks identified with what would disprove them** → `docs/RISKS.md`
 - [x] **Read-only WebDAV mount façade** (no third-party driver, no licence cost, so it stays $0) → 22 tests; `docs/WEBDAV_MOUNT.md`
-- [x] **Test harness + exact commands** → `python3 -m unittest discover -s tests -t . -v` (85 passing)
+- [x] **Review loop (Gate D groundwork)**: threaded timecoded comments, guest links with expiry/passphrase/revocation, selects, marker CSV → 18 tests. **Marker import into Premiere/Resolve still unverified.**
+- [x] **Workspace UI** (drive tree → browser → inspector with Details/Comments/Transcript/Similar/Share) → `docs/UI.md`, jsdom smoke test (17 assertions)
+- [x] **Test harness + exact commands** → `python3 -m unittest discover -s tests -t . -v` (103 passing)
 
 ## Deliberately not started (next slices, in order)
 
 - [ ] Verify the WebDAV mount with real OS clients + real NLEs and record Gate A numbers (code done; nothing proven on your machines yet)
-- [ ] Review slice: scoped accountless review links, timestamped comments, marker export → Gate D
+- [ ] Verify marker import in Premiere and Resolve; add version-stacking UI; live comment push
 - [ ] AI slice: ffprobe metadata → thumbnails → whisper.cpp transcripts → YuNet/SFace clusters, pausable, offline-searchable → Gate B
 - [ ] ffmpeg tier: proxies for phone review and weak links (explicit "proxy ≠ backup" wording)
 - [ ] Mobile PWA selects (Keep/Maybe/Reject) → Gate E

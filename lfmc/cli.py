@@ -143,6 +143,87 @@ def cmd_seed_demo(args):
         conn.close()
 
 
+def cmd_seed_reviews(args):
+    """Populate the demo drive with a realistic review session.
+
+    Labelled as demo data in the audit log. Safe to re-run: it skips anything
+    that already exists, and it never touches real media.
+    """
+    from .core import review
+    from .core.db import log_event
+
+    conn = _conn(args)
+    try:
+        root = conn.execute("SELECT id, label FROM roots ORDER BY created_at LIMIT 1").fetchone()
+        if root is None:
+            print(json.dumps({"error": "no roots registered — run seed-demo first"}))
+            return
+        assets = {r["name"]: dict(r) for r in conn.execute(
+            "SELECT * FROM assets WHERE root_id=? AND deleted_at IS NULL", (root["id"],))}
+
+        def pick(*names):
+            for n in names:
+                if n in assets:
+                    return assets[n]
+            return None
+
+        hero = pick("A001_C003.mp4", "DJI_0007.mp4", "final_cut_v3.mp4")
+        second = pick("DJI_0007.mp4", "A001_C004.mp4")
+        if hero is None:
+            print(json.dumps({"error": "demo assets missing — run seed-demo first"}))
+            return
+
+        existing = conn.execute("SELECT COUNT(*) c FROM asset_comments WHERE asset_id=?",
+                                (hero["id"],)).fetchone()["c"]
+        created = {"comments": 0, "selects": 0, "links": 0}
+        if existing == 0:
+            c1 = review.add_comment(conn, asset_id=hero["id"], author="Jonathan Fern",
+                                    body="Still grading the other footage, but here's the sneak peek. "
+                                         "The rest lands on the drive within the hour.",
+                                    timecode_ms=120000, fps=25, visibility="shared")
+            review.add_comment(conn, asset_id=hero["id"], author="Kai Nguyen",
+                               body="I love it already.", parent_id=c1["id"],
+                               timecode_ms=120000, fps=25, visibility="shared")
+            c3 = review.add_comment(conn, asset_id=hero["id"], author="Client Jane",
+                                    author_kind="guest",
+                                    body="Perfect for socials — can we hold this frame a beat longer?",
+                                    timecode_ms=32000, fps=25, visibility="shared")
+            review.add_comment(conn, asset_id=hero["id"], author="Simon Greene",
+                               body="We'll need to play with the aspect ratio but agreed.",
+                               parent_id=c3["id"], timecode_ms=32000, fps=25,
+                               visibility="shared")
+            review.add_comment(conn, asset_id=hero["id"], author="producer",
+                               body="Internal: audio bed needs a licence check before delivery.",
+                               timecode_ms=45000, fps=25, visibility="internal")
+            created["comments"] = 5
+
+        if second:
+            review.set_select(conn, asset_id=hero["id"], reviewer="producer",
+                              decision="keep", note="Hero shot for the open")
+            review.set_select(conn, asset_id=second["id"], reviewer="producer",
+                              decision="maybe", note="Great movement, check the horizon")
+            created["selects"] = 2
+
+        if not review.list_links(conn, asset_id=hero["id"]):
+            link = review.create_review_link(conn, asset_id=hero["id"],
+                                             expires_in_hours=168,
+                                             created_by="producer",
+                                             note="demo client link")
+            created["links"] = 1
+        else:
+            link = None
+
+        log_event(conn, "demo.reviews_seeded", subject=hero["id"], detail=json.dumps(created))
+        conn.commit()
+        out = {"asset": hero["name"], **created}
+        if link:
+            out["guest_link_path"] = link["url_path"]
+            out["note"] = "open http://localhost:8765" + link["url_path"] + " for the guest view"
+        print(json.dumps(out, indent=2))
+    finally:
+        conn.close()
+
+
 def cmd_spike_open(args):
     from .spikes.mp4_remote_open import analyse_source
     report = analyse_source(args.source, args.token, args.seeks,
@@ -183,6 +264,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("seed-demo", help="create a synthetic sample drive and catalogue it")
     p.add_argument("--dir", default=DEFAULT_SAMPLE)
     p.set_defaults(func=cmd_seed_demo)
+
+    sub.add_parser("seed-reviews",
+                   help="add a demo comment thread, selects and a guest link").set_defaults(
+        func=cmd_seed_reviews)
 
     p = sub.add_parser("spike-open", help="measure ranged-read cost of opening an MP4/MOV")
     p.add_argument("source", help="local path or http(s) URL")

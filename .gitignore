@@ -18,3 +18,8 @@ __pycache__/
 Thumbs.db
 .idea/
 .vscode/
+
+# dev-only UI smoke tooling (not a product dependency)
+node_modules/
+package-lock.json
+package.json
