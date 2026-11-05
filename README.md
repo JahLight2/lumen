@@ -178,3 +178,11 @@ lfmc/
   tools/        ui_smoke.js (jsdom UI smoke test, dev-only)
   docs/         cost ledger, architecture, blueprint extract, NLE prereqs, risks, test log, progress
 ```
+
+## Building it with an agent IDE
+
+The repo carries an agent contract: `AGENTS.md` (always-on rules) and
+`.agents/rules/*.md` (scoped rules for privacy, tests, UI, NLE integrity, demo
+honesty, cost). Google Antigravity, or any agent that reads `AGENTS.md`, picks
+them up automatically. Setup, permission preset and starter prompts:
+[`docs/ANTIGRAVITY.md`](docs/ANTIGRAVITY.md).

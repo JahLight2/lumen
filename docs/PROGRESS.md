@@ -39,3 +39,13 @@ Blueprint v0.5 · milestone 1 of the build plan (§15) · updated 2026-10-23
 5. Induced offline conflict → confirm both users' work survives.
 6. Amharic filename + transcript search on both OSes (Unicode normalization, tokenizer).
 7. Confirm whether your plan includes Team Projects, and whether your Resolve build exposes collaboration (`NLE_PREREQUISITES.md`).
+
+## Build tooling
+
+- [x] Agent-IDE kit committed: `AGENTS.md` + `.agents/rules/*.md` (7 scoped
+      rules: blueprint protection, media privacy, tests, UI/Shade limits, NLE
+      integrity, static-demo honesty, cost/dependencies).
+- [x] `docs/ANTIGRAVITY.md` — install, project boundary, permission preset with
+      allow/deny lists, first four prompts, quota-aware rhythm.
+- [ ] Verify Antigravity sign-in works for an Ethiopian Google account, and note
+      the actual free-tier behaviour (quota window) in `docs/COSTS.md`.

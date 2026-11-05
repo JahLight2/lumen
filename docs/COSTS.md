@@ -166,3 +166,20 @@ drive are not the same problem over a typical Addis uplink.
 **Runtime incompatibility (decisive):** the product needs a long-lived process (`serve_forever`), a writable SQLite/WAL catalogue on local disk, byte-range reads of originals from a local `abs_path`, and a WebDAV `/dav/` mount. Vercel is serverless with ephemeral disk. Only a captured, read-only snapshot can be hosted there.
 
 **What was deployed:** project `lfmc-demo-static` (id `prj_nblyiy6VgJfFjgXH27oKtmYc5mMj`), production deployment `dpl_JCEGpfnH9VMB6VAssQpR5ku1WAvo` → https://lfmc-demo-static-kiruproof-7222.vercel.app — a static read-only snapshot (loader + gzip payload). Requires the owner to be signed in to Vercel. Remove with `delete_project` when done; nothing else in the account was touched.
+
+## Google Antigravity (build tooling, evaluated 5 Nov 2026)
+
+Used to *write* the code, never to serve it. No customer data ever reaches it.
+
+| Item | Current position | Consequence |
+|---|---|---|
+| Individual plan | $0/month, no card required; unlimited Tab completions and command requests | fits the $0 rule |
+| Agent quota | **Size not published by Google**; described as "basic weekly rate limits", refreshed weekly | free tier is evaluation-grade, not a delivery guarantee |
+| Quota history | cut roughly 250 → 20 requests/day between Nov 2025 and Mar 2026; described by press as four unannounced cuts | plan work as if access can pause mid-slice |
+| Paid tiers | Google AI Plus ~$7.99, Pro $19.99, Ultra $99.99/$199.99 per month (US) | **not required** by this repo; do not enable |
+| Fallback if access is lost | everything in `.agents/` is plain Markdown + the suite runs on stdlib Python | another agent or a human can pick up the same rules |
+| Region / account gating | Google's FAQ limits personal accounts to 18+ in approved regions; **Ethiopia not confirmed** | verify at sign-in before planning around it |
+| Data handling | code/workspace contents are sent to Google's models; I have **not** verified current training/retention terms for the free tier | therefore: no footage, proxies, transcripts or client project data in the workspace — enforced by `.agents/rules/media-privacy.md` and a permission deny-list |
+
+Sources: antigravity.google/docs/{getting-started,rules,permissions}, antigravity.google/download;
+pricing corroborated by CloudZero (18 Sep 2026), preuve.ai (10 Oct 2026) and vibecoding.tech (26 Sep 2026).
