@@ -1170,9 +1170,27 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, result)
 
 
+class _Server(ThreadingHTTPServer):
+    """ThreadingHTTPServer that does not print a traceback when a client goes away.
+
+    A phone that scrolls out of range, a browser that cancels a download, or a
+    range probe that closes early all raise BrokenPipe/ConnectionReset inside
+    socketserver. Those are normal client behaviour, not server faults, and full
+    tracebacks in the log train people to ignore the log. Anything else is still
+    reported.
+    """
+
+    def handle_error(self, request, client_address):
+        import sys
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def make_server(config: Config) -> ThreadingHTTPServer:
     handler = type("BoundHandler", (Handler,), {"config": config})
-    httpd = ThreadingHTTPServer((config.host, config.port), handler)
+    httpd = _Server((config.host, config.port), handler)
     httpd.daemon_threads = True
     return httpd
 
