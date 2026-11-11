@@ -114,6 +114,32 @@ by quality: InsightFace models and Ultralytics YOLO are excluded from a commerci
 product (`COSTS.md` §2). Speech via whisper.cpp (MIT); faces via YuNet+SFace
 (Apache-2.0); objects via YOLOX/RT-DETR (Apache-2.0).
 
+### ADR-009 — One token per person, scopes enforced at the server
+
+Status: **accepted and implemented** (11 Nov 2026).
+
+A single host token made every comment anonymous and every revocation a
+team-wide password change. Collaborators now hold their own token with a role
+(`producer`, `editor`, `reviewer`); the host keeps an all-scopes token. Decisions
+that matter:
+
+* The server is the authority. The UI hides what a token cannot do, but a hidden
+  button is not a control — every route checks the scope itself.
+* Tokens are hashed with SHA-256 (high-entropy secrets, not passwords). If they
+  ever become user-chosen this must become scrypt.
+* `401` for "no valid credential", `403` for "valid credential, wrong scope", and
+  revoked/unknown/expired are all `401` so probing cannot confirm a token exists.
+* The author of a comment comes from the token, never from the request body.
+
+### ADR-010 — The project hub never touches project bytes
+
+Status: **accepted and implemented** (11 Nov 2026).
+
+Locks and version references, nothing else. `register_version()` stats the file;
+it does not open it. The fingerprint is a stat signature precisely so that no
+content read is ever needed. Recovery produces instructions for a human in the
+NLE, never a restore. Two tests fail the build if project reads are introduced.
+
 ### ADR-008 — Python stdlib only for the first slices
 **Status:** accepted, revisit at packaging.
 No `pip install` in the hot path means: no dependency drift, no build toolchain, no
@@ -124,6 +150,10 @@ packaging (likely PyInstaller/Nuitka or a signed installer).
 ---
 
 ## Data model (implemented)
+
+Schema **v2** (11 Nov 2026) adds, additively and without rewriting user data:
+`collaborators`, `marker_exports`, `project_locks`, `project_versions`. Migration
+is create-if-missing plus a version bump; no table is ever altered destructively.
 
 ```
 roots(id, label, abs_path, online, share_enabled, last_seen_at, read_only, …)

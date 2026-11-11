@@ -32,6 +32,10 @@
   /* ---------- sidebar ---------- */
   .sidebar{border-right:1px solid var(--line);background:var(--bg-2);display:flex;
            flex-direction:column;min-height:0}
+  .rolechip{margin:0 16px 10px;padding:5px 9px;border-radius:999px;
+    background:rgba(255,255,255,.045);border:1px solid var(--line,rgba(255,255,255,.09));
+    color:var(--dim,#8fa3b8);font-size:11px;letter-spacing:.02em;cursor:default;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px}
   .mark{width:26px;height:26px;border-radius:8px;background:var(--lime);
         display:grid;place-items:center;color:#0a0a0b;font-weight:800;font-size:14px}
@@ -227,6 +231,7 @@
 
   <!-- ================= main ================= -->
   <main class="main">
+    <div id="whoami" class="rolechip" style="display:none"></div>
     <div class="topbar">
       <div class="search">
         <span style="color:var(--dim-2)">⌕</span>
@@ -294,7 +299,31 @@ const ago = iso => {
   return Math.floor(d/86400)+"d ago";
 };
 
+/* ---- session: a collaborator opens /?token=<their token> once; we keep it in
+   sessionStorage and attach it to every call. The token is never embedded in
+   the page by the server, so loading "/" tells you nothing. ---- */
+const TOKEN_KEY = "lfmc.token";
+(function captureToken(){
+  try{
+    const t = new URLSearchParams(location.search).get("token");
+    if(t){ sessionStorage.setItem(TOKEN_KEY, t); }
+  }catch(e){ /* no URL/history access: stay anonymous */ }
+})();
+function tok(){ try{ return sessionStorage.getItem(TOKEN_KEY) || ""; }catch(e){ return ""; } }
+function authHeaders(extra){
+  const h = Object.assign({}, extra || {});
+  const t = tok();
+  if(t) h["Authorization"] = "Bearer " + t;
+  return h;
+}
+/* Scopes come from the server, not from a guess in the client: hiding a button
+   the token cannot use is courtesy, and the server still enforces it. */
+const SCOPES = new Set();
+function can(scope){ return SCOPES.has(scope); }
+
 async function api(path, opts={}){
+  opts = Object.assign({}, opts);
+  opts.headers = authHeaders(opts.headers);
   const r = await fetch(path, opts);
   const t = await r.text();
   let j; try{ j = JSON.parse(t); }catch(e){ j = {raw:t}; }
@@ -307,8 +336,30 @@ function toast(msg){
 }
 
 /* ---------------- boot ---------------- */
+async function loadMe(){
+  try{
+    const me = await api("/api/whoami");
+    (me.scopes || []).forEach(x => SCOPES.add(x));
+    S.me = me;
+    const el = document.getElementById("whoami");
+    if(el){
+      const label = me.kind === "host"
+        ? "host · full access"
+        : `${me.name || "collaborator"} · ${me.role}`;
+      el.textContent = label;
+      el.title = "Scopes: " + (me.scopes || []).join(", ");
+      el.style.display = "";
+    }
+  }catch(e){
+    SCOPES.clear();
+    const el = document.getElementById("whoami");
+    if(el){ el.textContent = "not signed in"; el.style.display = ""; el.title = "Add ?token= to the URL"; }
+  }
+}
+
 async function boot(){
   try{
+    await loadMe();
     await loadCapabilities();
     await loadRoots();
     loadSelects();
@@ -624,11 +675,19 @@ function renderDetails(a){
 function markerBanner(a){
   const n = (S.comments||[]).filter(c => c.timecode_ms != null).length;
   if(!n) return "";
+  if(!can("markers")){
+    return `<div class="banner info"><b>${n} timecoded note${n===1?"":"s"}</b> on
+      ${esc(a.version_label||"v1")}. Exporting markers needs the editor or producer role —
+      your token has read/comment only.</div>`;
+  }
   return `<div class="banner info">
      <b>${n} timecoded note${n===1?"":"s"}</b> on ${esc(a.version_label||"v1")}.
      <button class="btn ghost" style="padding:2px 8px;margin-left:6px"
-       onclick="exportMarkers('${a.id}')">Export marker CSV</button>
-     <div style="margin-top:5px;color:#7ba7c9">Not yet verified as a marker import in Premiere or Resolve.</div>
+       data-marker="premiere" onclick="exportMarkers('${a.id}','premiere')">Premiere CSV</button>
+     <button class="btn ghost" style="padding:2px 8px"
+       data-marker="resolve" onclick="exportMarkers('${a.id}','resolve')">Resolve TSV</button>
+     <div style="margin-top:5px;color:#7ba7c9">Re-export is idempotent: notes keep their marker name.
+       Not yet verified as a marker import in Premiere or Resolve.</div>
    </div>`;
 }
 
@@ -656,7 +715,7 @@ function wireSelectButtons(a){
 
 function wireMarkerButtons(a){
   document.querySelectorAll("[data-marker]").forEach(btn => btn.onclick = () => {
-    window.open(`/api/assets/${encodeURIComponent(a.id)}/markers.csv`, "_blank");
+    exportMarkers(a.id, btn.dataset.marker || "premiere");
   });
 }
 
@@ -794,6 +853,12 @@ function renderSimilar(a){
 }
 
 function renderShare(a){
+  if(!can("share")){
+    return `<div class="banner info" style="margin:12px">
+      <b>Share links are not available on this token.</b>
+      Issuing a client link needs the producer role; your token can read and comment.
+      Ask the host owner for a producer token if you need to send this out.</div>`;
+  }
   const links = S.links || [];
   $("inspBody").innerHTML = `
     <div class="banner info">A review link is <b>scoped to this one asset and version</b>,
@@ -857,15 +922,21 @@ function renderShare(a){
   });
 }
 
-window.exportMarkers = async (assetId) => {
-  const r = await fetch(`/api/assets/${assetId}/markers.csv`);
-  if(!r.ok){ toast("Export failed"); return; }
+window.exportMarkers = async (assetId, fmt="premiere") => {
+  const ext = fmt === "resolve" ? "tsv" : "csv";
+  const r = await fetch(
+    `/api/assets/${encodeURIComponent(assetId)}/markers?format=${fmt}`,
+    { headers: authHeaders() });
+  if(!r.ok){ toast("Export failed ("+r.status+")"); return; }
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `markers-${assetId.slice(0,8)}.csv`; a.click();
+  a.href = url;
+  a.download = `markers-${assetId.slice(0,8)}-${fmt}.${ext}`;
+  a.click();
   URL.revokeObjectURL(url);
-  toast("Marker CSV downloaded — import path unverified in NLEs");
+  const label = fmt === "resolve" ? "Resolve TSV" : "Premiere CSV";
+  toast(`${label} downloaded — import path unverified in both NLEs`);
 };
 
 /* ---------------- tabs / view toggles ---------------- */

@@ -150,6 +150,9 @@ client media never enter the log — only asset id, byte offsets, counts and out
 
 ## Documentation
 
+- [docs/COLLAB.md](docs/COLLAB.md) — collaborator roles/scoped tokens, idempotent
+  marker export, and the project hub (locks, version references, recovery).
+
 | File | Contents |
 |---|---|
 | [`docs/COSTS.md`](docs/COSTS.md) | every dependency: licence, cost, limits, data egress, fallback; verified findings + cost exceptions needing approval |

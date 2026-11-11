@@ -43,3 +43,16 @@ Rules for filling a row
 | Who hosts and pays for a Blackmagic Cloud Project Library (if used)? | |
 | Is there compatible shared storage for Premiere Productions? | |
 | Is there a private Resolve Project Server host that stays online? | |
+
+
+## Pending verification: marker import (added 11 Nov 2026)
+
+| Target | Artefact | Status |
+|---|---|---|
+| Premiere Pro | `/api/assets/<id>/markers?format=premiere` (CSV) | **unverified** — no import attempted |
+| DaVinci Resolve | `/api/assets/<id>/markers?format=resolve` (TSV) | **unverified** — no import attempted |
+
+To close either row: import the file into a real project on a licensed machine,
+record the NLE version, the OS, whether the marker landed on the intended frame,
+and whether a re-import created duplicates (it must not). Until then every
+response carries `X-LFMC-Export-Verified: no` and the UI says "not yet verified".

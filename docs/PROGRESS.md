@@ -27,7 +27,8 @@ Blueprint v0.5 · milestone 1 of the build plan (§15) · updated 2026-10-23
 - [ ] AI slice: ffprobe metadata → thumbnails → whisper.cpp transcripts → YuNet/SFace clusters, pausable, offline-searchable → Gate B
 - [ ] ffmpeg tier: proxies for phone review and weak links (explicit "proxy ≠ backup" wording)
 - [ ] Mobile PWA selects (Keep/Maybe/Reject) → Gate E
-- [ ] TLS + certificate pinning; per-collaborator scoped tokens (currently one host token)
+- [~] TLS + certificate pinning still open; **per-collaborator scoped tokens done** (11 Nov)
+- [x] Project hub: locks, version references, conflict recovery (11 Nov)
 - [ ] NLE adapters' real behaviour → Gate C (needs user-side licences; `docs/NLE_TEST_LOG.md`)
 
 ## Requires your machines / accounts (I cannot do these here)
@@ -49,3 +50,32 @@ Blueprint v0.5 · milestone 1 of the build plan (§15) · updated 2026-10-23
       allow/deny lists, first four prompts, quota-aware rhythm.
 - [ ] Verify Antigravity sign-in works for an Ethiopian Google account, and note
       the actual free-tier behaviour (quota window) in `docs/COSTS.md`.
+
+
+## Evening of 11 Nov 2026 — three slices built in-repo
+
+Built directly in this repository (not in an agent IDE). Test count 103 → 161.
+
+- [x] **Slice A — scoped collaborator tokens** (`lfmc/core/auth.py`): producer /
+      editor / reviewer roles, SHA-256-hashed tokens, expiry, revocation,
+      `401` anonymous vs `403 insufficient_scope`, comment author bound to the
+      token. CLI: `collaborators add|list|revoke`. 21 tests.
+- [x] **Security fix found while testing A**: `/api/roots`, `/api/browse`,
+      `/api/search`, `/api/assets`, `/api/assets/<id>`, `/api/events`,
+      `/api/transfers` were readable by anyone on the LAN with no token. Now
+      behind the `read` scope. Guest link routes unchanged.
+- [x] **Slice B — idempotent marker export** (`lfmc/core/review.py`): stable
+      marker key per note, `marker_exports` ledger, Premiere CSV + Resolve TSV,
+      re-export updates instead of duplicating. **Still unverified inside either
+      NLE** (`X-LFMC-Export-Verified: no`). 14 tests.
+- [x] **Slice C — project hub** (`lfmc/core/hub.py`): locks with TTL and expiry
+      reclaim, version registry storing path + stat signature only, recovery
+      report with NLE instructions. No byte reads, no copies, no merges —
+      enforced by two tests. 23 tests.
+- [x] UI: token-carrying session (`?token=` → sessionStorage), role chip, both
+      marker formats, and read-only collaborators see *why* Share/Markers are
+      unavailable instead of a dead button. UI smoke 17/17.
+- [x] `docs/COLLAB.md` — roles, API, limits, and what is still unverified.
+
+Still blocked, unchanged: real NLE import proof, two-editor rehearsal,
+macOS/Windows mounts, TLS, AI indexing.

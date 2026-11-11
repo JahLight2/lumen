@@ -1,5 +1,10 @@
 # Tonight — one evening, one demoable cut
 
+> **Outcome (11 Nov, ~23:20):** slices A, B and C were built in the repo directly.
+> Suite went 103 → **161 OK**; UI smoke 17/17; every route exercised on a live
+> host. See `docs/COLLAB.md` for what shipped and what is still unverified.
+> Slice D (redeploy the snapshot) was not done.
+
 Reality check first: a full MVP in one evening is not possible, and pretending
 otherwise wastes the evening. What *is* possible is a **tonight cut** — three
 vertical slices that close real V1 gaps, each with a test, each leaving the repo
