@@ -1,7 +1,7 @@
 # Building Lumen in Google Antigravity
 
 Antigravity is the agentic IDE from Google (Gemini 3, launched Nov 2025; this repo
-was prepared against the docs as of **5 Nov 2026**). It is a **build tool**, not a
+was prepared against the docs as of **23 Oct 2026**). It is a **build tool**, not a
 place to run the product: Lumen still runs on the machine that owns the drive.
 
 Everything Antigravity needs is already committed to this repo:

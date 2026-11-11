@@ -29,7 +29,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ..core import catalogue, db, review, scanner
+from ..core import auth, catalogue, db, review, scanner
 from ..core.db import now_iso
 from ..net import http_range
 from ..spikes import mp4_remote_open
@@ -93,45 +93,91 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
-    def _authorized(self) -> bool:
-        if self.config.demo:
-            return True
-        token = self.config.token
+    def _actor(self) -> dict | None:
+        """Who is calling? Cached per request.
+
+        Two kinds of caller exist: the host (the machine's owner, holding the
+        one host token) and named collaborators (scoped tokens). Anything that
+        is not one of those is anonymous and gets 401.
+        """
+        if getattr(self, "_actor_cache", False) is not False:
+            return self._actor_cache
+        actor = self._resolve_actor()
+        self._actor_cache = actor
+        return actor
+
+    def _bearer_or_basic_password(self) -> str | None:
         header = self.headers.get("Authorization", "")
-        if header.startswith("Bearer ") and secrets.compare_digest(header[7:].strip(), token):
-            return True
-        # OS WebDAV clients (macOS Finder, Windows redirector, rclone) cannot send
-        # a Bearer token; they use HTTP Basic. Password = the host token, username
-        # is ignored. Basic over cleartext HTTP is why mounts are LAN/VPN-only
-        # until TLS lands (docs/WEBDAV_MOUNT.md).
+        if header.startswith("Bearer "):
+            return header[7:].strip()
         if header.startswith("Basic "):
+            # OS WebDAV clients (macOS Finder, Windows redirector, rclone) cannot
+            # send a Bearer token; they use HTTP Basic. Password = the token,
+            # username is ignored. Basic over cleartext HTTP is why mounts are
+            # LAN/VPN-only until TLS lands (docs/WEBDAV_MOUNT.md).
             import base64
             try:
                 decoded = base64.b64decode(header[6:].strip()).decode("utf-8", "replace")
                 _user, _, password = decoded.partition(":")
+                return password or None
             except Exception:
-                password = ""
-            if password and secrets.compare_digest(password, token):
-                return True
-        qs = urllib.parse.urlparse(self.path).query
-        supplied = urllib.parse.parse_qs(qs).get("token", [""])[0]
-        return bool(supplied) and secrets.compare_digest(supplied, token)
+                return None
+        return None
+
+    def _resolve_actor(self) -> dict | None:
+        if self.config.demo:
+            return {"kind": "host", "name": "host", "role": "host",
+                    "scopes": sorted(auth.HOST_SCOPES), "demo": True}
+        supplied = self._bearer_or_basic_password()
+        if supplied is None:
+            qs = urllib.parse.urlparse(self.path).query
+            supplied = urllib.parse.parse_qs(qs).get("token", [""])[0] or None
+        if not supplied:
+            return None
+        if secrets.compare_digest(supplied, self.config.token):
+            return {"kind": "host", "name": "host", "role": "host",
+                    "scopes": sorted(auth.HOST_SCOPES)}
+        conn = self._conn()
+        try:
+            who = auth.resolve_token(conn, supplied)
+        finally:
+            conn.close()
+        if who is None:
+            return None
+        return {"kind": "collaborator", "id": who["id"], "name": who["name"],
+                "role": who["role"], "scopes": who["scopes"],
+                "expires_at": who.get("expires_at")}
+
+    def _authorized(self) -> bool:
+        return self._actor() is not None
 
     def _require_auth(self) -> bool:
-        if self._authorized():
-            return True
-        extra = None
-        if self.path.startswith("/dav"):
-            # Ask the OS client to prompt for credentials.
-            extra = {"WWW-Authenticate": 'Basic realm="lfmc read-only dav", charset="UTF-8"'}
-        body = _json_bytes({
-            "error": "unauthorized",
-            "message": "A valid bearer token (or DAV password) is required.",
-            "hint": "Pass 'Authorization: Bearer <token>', ?token=…, or use the token as the "
-                    "WebDAV password.",
-        })
-        self._send(401, body, "application/json", extra)
-        return False
+        return self._require_scope("read")
+
+    def _require_scope(self, scope: str) -> bool:
+        """401 if nobody is signed in, 403 if somebody lacks the scope."""
+        actor = self._actor()
+        if actor is None:
+            extra = None
+            if self.path.startswith("/dav"):
+                # Ask the OS client to prompt for credentials.
+                extra = {"WWW-Authenticate": 'Basic realm="lfmc read-only dav", charset="UTF-8"'}
+            body = _json_bytes({
+                "error": "unauthorized",
+                "message": "A valid bearer token (or DAV password) is required.",
+                "hint": "Pass 'Authorization: Bearer <token>', ?token=…, or use the token as "
+                        "the WebDAV password.",
+            })
+            self._send(401, body, "application/json", extra)
+            return False
+        if not auth.has_scope(actor, scope, host=actor.get("kind") == "host"):
+            self._err(403, "insufficient_scope",
+                      f"This token has the {actor.get('role')!r} role, which does not "
+                      f"include the {scope!r} scope.",
+                      hint=f"Scopes held: {', '.join(actor.get('scopes') or [])}. "
+                           "Ask the host owner to issue a token with a role that allows this.")
+            return False
+        return True
 
     # -- routing ----------------------------------------------------------
     def do_HEAD(self):
@@ -239,6 +285,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._set_select(path)
             if path.startswith("/api/assets/"):
                 return self._asset_detail(path)
+            # ---- collaborators (Slice A) ----
+            if path == "/api/whoami":
+                actor = self._actor()
+                if actor is None:
+                    return self._require_scope("read")   # emits the 401
+                return self._json(200, actor)
+            if path == "/api/collaborators":
+                return self._collaborators()
+            if path.startswith("/api/collaborators/"):
+                return self._collaborator_action(path)
             if path == "/api/spike/open":
                 return self._spike_open(qs)
             if path == "/api/dav/info":
@@ -259,6 +315,60 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # never leak a traceback to a client
             return self._err(500, "internal_error", f"{type(exc).__name__}: {exc}")
 
+    # -- collaborators ----------------------------------------------------
+    def _collaborators(self):
+        if not self._require_scope("admin"):
+            return
+        conn = self._conn()
+        try:
+            if self.command == "POST":
+                body = self._body()
+                try:
+                    created = auth.add_collaborator(
+                        conn,
+                        name=body.get("name", ""),
+                        role=body.get("role", ""),
+                        created_by=(self._actor() or {}).get("name") or "owner",
+                        expires_in_hours=body.get("expires_in_hours"),
+                        note=body.get("note"),
+                    )
+                except auth.AuthError as exc:
+                    return self._err(400, "invalid_collaborator", str(exc))
+                # The raw token is in this response and nowhere else.
+                created["token_warning"] = ("This token is shown once. It is stored only as a "
+                                            "hash; if it is lost, revoke and reissue.")
+                return self._json(201, created)
+            include_revoked = urllib.parse.parse_qs(
+                urllib.parse.urlparse(self.path).query).get("include_revoked", ["0"])[0] in ("1", "true")
+            return self._json(200, {"collaborators": auth.list_collaborators(conn, include_revoked)})
+        finally:
+            conn.close()
+
+    def _collaborator_action(self, path: str):
+        if not self._require_scope("admin"):
+            return
+        parts = path.strip("/").split("/")       # api, collaborators, <id>, <action>
+        if len(parts) < 3:
+            return self._err(404, "not_found", "unknown collaborator route")
+        cid = parts[2]
+        action = parts[3] if len(parts) > 3 else ""
+        conn = self._conn()
+        try:
+            if action == "revoke" and self.command == "POST":
+                try:
+                    return self._json(200, auth.revoke_collaborator(
+                        conn, cid, (self._actor() or {}).get("name") or "owner"))
+                except auth.AuthError as exc:
+                    return self._err(404, "not_found", str(exc))
+            if action:
+                return self._err(404, "not_found", f"unknown collaborator action {action!r}")
+            try:
+                return self._json(200, auth.get_collaborator(conn, cid))
+            except auth.AuthError as exc:
+                return self._err(404, "not_found", str(exc))
+        finally:
+            conn.close()
+
     # -- static UI --------------------------------------------------------
     def _serve_web(self, rel: str):
         target = (WEB_ROOT / rel).resolve()
@@ -274,12 +384,19 @@ class Handler(BaseHTTPRequestHandler):
         conn = self._conn()
         try:
             if self.command == "POST":
+                if not self._require_scope("comment"):
+                    return
+                actor = self._actor() or {}
                 body = self._body()
+                # A named collaborator cannot post under someone else's name:
+                # the token decides the author, the body may not override it.
+                author = (body.get("author") if actor.get("kind") == "host" else None) \
+                    or actor.get("name") or "member"
                 try:
                     c = review.add_comment(
                         conn, asset_id=asset_id,
                         body=body.get("body", ""),
-                        author=body.get("author") or "member",
+                        author=author,
                         author_kind=body.get("author_kind") or "member",
                         timecode_ms=body.get("timecode_ms"),
                         timecode_end_ms=body.get("timecode_end_ms"),
@@ -328,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _create_review_link(self):
-        if not self._require_auth():
+        if not self._require_scope("share"):
             return
         body = self._body()
         conn = self._conn()
@@ -356,7 +473,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _review_link_action(self, path: str):
-        if not self._require_auth():
+        if not self._require_scope("share"):
             return
         parts = path.strip("/").split("/")
         link_id = parts[2]
@@ -377,7 +494,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _markers_csv(self, path: str):
-        if not self._require_auth():
+        if not self._require_scope("markers"):
             return
         parts = path.strip("/").split("/")
         asset_id = parts[2]
@@ -395,7 +512,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _set_select(self, path: str):
-        if not self._require_auth():
+        if not self._require_scope("select"):
             return
         parts = path.strip("/").split("/")
         asset_id = parts[2]
@@ -497,6 +614,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- catalogue API ----------------------------------------------------
     def _list_roots(self):
+        if not self._require_scope("read"):
+            return
         conn = self._conn()
         try:
             for row in conn.execute("SELECT id FROM roots").fetchall():
@@ -509,7 +628,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _register_root(self):
-        if not self._require_auth():
+        if not self._require_scope("admin"):
             return
         body = self._body()
         path = body.get("path")
@@ -527,7 +646,7 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _root_action(self, path: str):
-        if not self._require_auth():
+        if not self._require_scope("admin"):
             return
         parts = path.strip("/").split("/")
         if len(parts) < 3:
@@ -560,6 +679,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _browse(self, qs):
+        if not self._require_scope("read"):
+            return
         root_id = qs.get("root_id", [""])[0]
         dir_path = qs.get("path", [""])[0]
         if not root_id:
@@ -574,6 +695,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _search(self, qs):
+        if not self._require_scope("read"):
+            return
         q = qs.get("q", [""])[0]
         root_id = qs.get("root_id", [None])[0]
         conn = self._conn()
@@ -587,6 +710,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _assets(self, qs):
+        if not self._require_scope("read"):
+            return
         root_id = qs.get("root_id", [None])[0]
         limit = min(1000, int(qs.get("limit", ["200"])[0]))
         conn = self._conn()
@@ -599,6 +724,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _asset_detail(self, path: str):
+        if not self._require_scope("read"):
+            return
         parts = path.strip("/").split("/")
         asset_id = parts[2]
         conn = self._conn()
@@ -615,6 +742,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _events(self, qs):
+        if not self._require_scope("read"):
+            return
         limit = min(500, int(qs.get("limit", ["50"])[0]))
         conn = self._conn()
         try:
@@ -624,6 +753,8 @@ class Handler(BaseHTTPRequestHandler):
             conn.close()
 
     def _transfers(self, qs):
+        if not self._require_scope("read"):
+            return
         limit = min(500, int(qs.get("limit", ["50"])[0]))
         conn = self._conn()
         try:

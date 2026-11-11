@@ -17,7 +17,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -251,6 +251,72 @@ CREATE TABLE IF NOT EXISTS nle_bindings (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Collaborators and scoped tokens (see core/auth.py)
+-- ---------------------------------------------------------------------------
+-- One host token used to open everything is fine for one person and wrong for a
+-- team: it makes every comment anonymous and every revocation a team-wide
+-- password change. Tokens are stored as SHA-256 hashes only; the raw token is
+-- shown once at creation and never again.
+CREATE TABLE IF NOT EXISTS collaborators (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    role         TEXT NOT NULL,          -- producer | editor | reviewer
+    token_hash   TEXT NOT NULL UNIQUE,
+    created_at   TEXT NOT NULL,
+    created_by   TEXT,
+    expires_at   TEXT,
+    revoked_at   TEXT,
+    last_used_at TEXT,
+    note         TEXT
+);
+CREATE INDEX IF NOT EXISTS collaborators_role_idx ON collaborators(role);
+
+-- ---------------------------------------------------------------------------
+-- Marker export bookkeeping (see core/review.py)
+-- ---------------------------------------------------------------------------
+-- One row per (note, target NLE). Re-exporting a note updates this row instead
+-- of creating a second marker, so a Friday re-export does not duplicate what
+-- Tuesday already pushed to the editor.
+CREATE TABLE IF NOT EXISTS marker_exports (
+    marker_key        TEXT NOT NULL,
+    target            TEXT NOT NULL,     -- premiere | resolve
+    external_id       TEXT NOT NULL,     -- the marker name we emit
+    first_exported_at TEXT NOT NULL,
+    last_exported_at  TEXT NOT NULL,
+    export_count      INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (marker_key, target)
+);
+
+-- ---------------------------------------------------------------------------
+-- Project hub: locks and version registry (see core/hub.py)
+-- ---------------------------------------------------------------------------
+-- References and status ONLY. We store a path and a stat fingerprint -- never
+-- the contents of a .prproj/.drp, and never a second copy of the project file.
+CREATE TABLE IF NOT EXISTS project_locks (
+    project_id  TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    holder      TEXT NOT NULL,
+    acquired_at TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    released_at TEXT,
+    note        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS project_versions (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    label       TEXT NOT NULL,
+    author      TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    source_path TEXT NOT NULL,          -- reference only, never contents
+    fingerprint TEXT,                   -- stat-based, no bytes read
+    size_bytes  INTEGER,
+    note        TEXT,
+    UNIQUE (project_id, label)
+);
+CREATE INDEX IF NOT EXISTS project_versions_project_idx
+    ON project_versions(project_id, created_at);
 """
 
 
@@ -294,6 +360,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
             "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?)",
             (str(SCHEMA_VERSION),),
         )
+    elif int(row["value"]) < SCHEMA_VERSION:
+        # Additive-only: the new tables were just created by the script above.
+        # No user data is rewritten and no existing table is altered.
+        conn.execute("UPDATE schema_meta SET value=? WHERE key='schema_version'",
+                     (str(SCHEMA_VERSION),))
     conn.commit()
 
 

@@ -17,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-from .core import catalogue, db, scanner
+from .core import auth, catalogue, db, scanner
 from .core.db import now_iso
 from .nle import registry
 
@@ -235,6 +235,40 @@ def cmd_nle_matrix(args):
     print(json.dumps(registry.capability_matrix(), indent=2))
 
 
+
+def cmd_collaborators(args):
+    conn = _conn(args)
+    try:
+        if args.action == "add":
+            try:
+                c = auth.add_collaborator(
+                    conn, name=args.name, role=args.role,
+                    expires_in_hours=args.expires_hours, note=args.note)
+            except auth.AuthError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return
+            print(f"collaborator {c['name']} ({c['role']}) id={c['id']}")
+            print(f"token: {c['token']}")
+            print("  ^ shown once, stored only as a hash. Hand it over out of band.")
+        elif args.action == "list":
+            rows = auth.list_collaborators(conn, include_revoked=args.all)
+            if not rows:
+                print("no collaborators")
+            for r in rows:
+                state = "REVOKED" if r["revoked"] else ("expired" if r.get("expires_at") else "active")
+                print(f"{r['id'][:8]}  {r['name']:<20} {r['role']:<9} {state:<8} "
+                      f"created {r['created_at'][:10]}")
+        elif args.action == "revoke":
+            try:
+                r = auth.revoke_collaborator(conn, args.id)
+            except auth.AuthError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return
+            print(f"revoked {r['name']} ({r['id'][:8]})")
+    finally:
+        conn.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="lfmc", description="Local-first media collaboration (MVP scaffold)")
     ap.add_argument("--db", default=DEFAULT_DB, help=f"catalogue database path (default {DEFAULT_DB})")
@@ -275,6 +309,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seeks", type=int, default=10)
     p.add_argument("--chunk-mb", type=float, default=2.0)
     p.set_defaults(func=cmd_spike_open)
+
+    p = sub.add_parser("collaborators", help="issue and revoke scoped collaborator tokens")
+    csub = p.add_subparsers(dest="action", required=True)
+    ca = csub.add_parser("add", help="create a collaborator; prints the token once")
+    ca.add_argument("name")
+    ca.add_argument("--role", required=True, choices=list(auth.ROLES))
+    ca.add_argument("--expires-hours", type=float, default=None)
+    ca.add_argument("--note")
+    cl = csub.add_parser("list", help="list collaborators")
+    cl.add_argument("--all", action="store_true", help="include revoked")
+    cr = csub.add_parser("revoke", help="revoke a collaborator token")
+    cr.add_argument("id")
+    p.set_defaults(func=cmd_collaborators)
 
     sub.add_parser("nle-matrix", help="print the NLE capability matrix").set_defaults(func=cmd_nle_matrix)
 
