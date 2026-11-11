@@ -50,12 +50,32 @@ class HubFixture(unittest.TestCase):
         cls._tmp.cleanup()
 
     def setUp(self):
-        # each test gets a clean catalogue
-        for suffix in ("", "-wal", "-shm"):
-            p = Path(str(self.db_path) + suffix)
-            if p.exists():
-                p.unlink()
-        db.connect(self.db_path).close()
+        # Each test gets a clean catalogue by *clearing rows*, not by deleting
+        # the file. Deleting a SQLite file that a live connection still holds is
+        # legal on Linux and macOS but a hard error on Windows
+        # (WinError 32: "the file is being used by another process"), and the
+        # HTTP fixture keeps a server thread that may hold one. Clearing works
+        # identically on all three platforms.
+        self._clear_catalogue()
+
+    def _clear_catalogue(self):
+        conn = db.connect(self.db_path)
+        try:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            names = [r["name"] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")]
+            # Skip SQLite internals and FTS5 shadow tables (asset_search_data,
+            # _idx, _content, _docsize, _config) which must never be touched
+            # directly -- the virtual table owns them.
+            skip = ("asset_search_",)
+            for name in names:
+                if name.startswith("sqlite_") or name.startswith(skip):
+                    continue
+                conn.execute(f'DELETE FROM "{name}"')
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys=ON")
+        finally:
+            conn.close()
 
     def conn(self):
         return db.connect(self.db_path)

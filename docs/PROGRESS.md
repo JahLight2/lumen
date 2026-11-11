@@ -92,3 +92,29 @@ macOS/Windows mounts, TLS, AI indexing.
       modules, scope checks on every route, hub-never-reads-bytes, idempotent
       markers, `--demo` disables auth.
 - [ ] Confirm Antigravity sign-in works for an Ethiopian Google account.
+
+## First CI run on GitHub (11 Nov, late) — one real finding
+
+Workflow `.github/workflows/tests.yml` ran on the first push:
+
+| Job | Result |
+|---|---|
+| linux · py3.10 / 3.12 / 3.13 | pass |
+| **macos-latest** | **pass** — first evidence this suite runs on a macOS host |
+| windows-latest | **fail** → fixed, see below |
+
+**Finding:** `tests/test_hub.py` cleaned its fixture by deleting `catalogue.db`
+between tests. Unix lets you unlink a file that a live connection still holds;
+Windows does not (`WinError 32: the file is being used by another process`). The
+HTTP fixture keeps a server thread that can hold the file, so 2 tests errored on
+Windows only. This is a *test-fixture* bug, not a product bug — but it is exactly
+the class of thing that would have surfaced as a confusing one-off during a
+Windows pilot, so it was worth catching now.
+
+**Fix:** the fixture now clears rows (with `foreign_keys=OFF`, skipping FTS5
+shadow tables) instead of deleting the file, which behaves identically on all
+three platforms.
+
+Note this does **not** close any of the platform gaps in "Requires your
+machines": no real footage, no NLE, no actual WebDAV mount, no WinFsp/macFUSE.
+It means the *Python* suite is portable, which is a much smaller claim.
