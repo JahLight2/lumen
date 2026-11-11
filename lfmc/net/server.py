@@ -29,7 +29,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ..core import auth, catalogue, db, review, scanner
+from ..core import auth, catalogue, db, hub, review, scanner
 from ..core.db import now_iso
 from ..net import http_range
 from ..spikes import mp4_remote_open
@@ -287,6 +287,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._set_select(path)
             if path.startswith("/api/assets/"):
                 return self._asset_detail(path)
+            # ---- project hub (Slice C) ----
+            if path == "/api/projects":
+                return self._projects()
+            if path.startswith("/api/projects/"):
+                return self._project_action(path)
+
             # ---- collaborators (Slice A) ----
             if path == "/api/whoami":
                 actor = self._actor()
@@ -316,6 +322,115 @@ class Handler(BaseHTTPRequestHandler):
             return
         except Exception as exc:  # never leak a traceback to a client
             return self._err(500, "internal_error", f"{type(exc).__name__}: {exc}")
+
+    # -- project hub ------------------------------------------------------
+    def _projects(self):
+        if not self._require_scope("hub"):
+            return
+        conn = self._conn()
+        try:
+            if self.command == "POST":
+                try:
+                    return self._json(201, hub.create_project(
+                        conn, self._body().get("name", ""),
+                        created_by=(self._actor() or {}).get("name") or "owner"))
+                except hub.HubError as exc:
+                    return self._err(400, "invalid_project", str(exc))
+            return self._json(200, {"projects": hub.list_projects(conn),
+                                    "nle_verified": False})
+        finally:
+            conn.close()
+
+    def _project_action(self, path: str):
+        if not self._require_scope("hub"):
+            return
+        parts = path.strip("/").split("/")      # api, projects, <id>, <action...>
+        pid = parts[2]
+        action = "/".join(parts[3:]) if len(parts) > 3 else ""
+        actor = (self._actor() or {}).get("name") or "owner"
+        is_host = (self._actor() or {}).get("kind") == "host"
+        conn = self._conn()
+        try:
+            if not action and self.command == "GET":
+                try:
+                    return self._json(200, hub.get_project(conn, pid))
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+
+            if action == "lock" and self.command == "POST":
+                body = self._body()
+                try:
+                    lock = hub.acquire_lock(
+                        conn, pid, holder=body.get("holder") or actor,
+                        ttl_minutes=body.get("ttl_minutes", hub.DEFAULT_LOCK_TTL_MINUTES),
+                        note=body.get("note"))
+                except hub.LockHeld as exc:
+                    return self._json(409, {
+                        "error": "lock_held", "message": str(exc),
+                        "holder": exc.lock.get("holder"),
+                        "expires_at": exc.lock.get("expires_at"),
+                        "hint": "Wait for the lock to expire, or ask the holder to "
+                                "release it. Locks never move a project file.",
+                    })
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+                except hub.HubError as exc:
+                    return self._err(400, "invalid_lock", str(exc))
+                return self._json(201, lock)
+
+            if action == "lock/release" and self.command == "POST":
+                body = self._body()
+                try:
+                    return self._json(200, hub.release_lock(
+                        conn, pid, holder=body.get("holder") or actor,
+                        force=bool(body.get("force")) and is_host))
+                except hub.LockHeld as exc:
+                    return self._json(409, {"error": "lock_held", "message": str(exc),
+                                            "holder": exc.lock.get("holder")})
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+                except hub.HubError as exc:
+                    return self._err(400, "invalid_lock", str(exc))
+
+            if action == "lock" and self.command == "GET":
+                try:
+                    hub.get_project(conn, pid)
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+                return self._json(200, {"project_id": pid,
+                                        "lock": hub.lock_state(conn, pid)})
+
+            if action == "versions" and self.command == "POST":
+                body = self._body()
+                try:
+                    v = hub.register_version(
+                        conn, pid, label=body.get("label", ""),
+                        author=body.get("author") or actor,
+                        source_path=body.get("source_path", ""),
+                        note=body.get("note"))
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+                except hub.HubError as exc:
+                    return self._err(400, "invalid_version", str(exc))
+                return self._json(201, v)
+
+            if action == "versions" and self.command == "GET":
+                try:
+                    hub.get_project(conn, pid)
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+                return self._json(200, {"versions": hub.list_versions(conn, pid),
+                                        "nle_verified": False})
+
+            if action == "recover" and self.command == "POST":
+                try:
+                    return self._json(200, hub.recover(conn, pid, actor=actor))
+                except hub.ProjectNotFound as exc:
+                    return self._err(404, "not_found", str(exc))
+
+            return self._err(404, "not_found", f"unknown project action {action!r}")
+        finally:
+            conn.close()
 
     # -- collaborators ----------------------------------------------------
     def _collaborators(self):

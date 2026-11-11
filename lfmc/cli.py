@@ -17,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 
-from .core import auth, catalogue, db, scanner
+from .core import auth, catalogue, db, hub, scanner
 from .core.db import now_iso
 from .nle import registry
 
@@ -269,6 +269,76 @@ def cmd_collaborators(args):
         conn.close()
 
 
+
+def cmd_project(args):
+    conn = _conn(args)
+    try:
+        if args.action == "create":
+            p = hub.create_project(conn, args.name)
+            print(f"project {p['name']} id={p['id']}")
+        elif args.action == "list":
+            rows = hub.list_projects(conn)
+            if not rows:
+                print("no projects")
+            for r in rows:
+                lock = r["lock"]
+                state = (f"LOCKED by {lock['holder']}"
+                         + (" (expired)" if lock.get("expired") else "")
+                         if lock else "unlocked")
+                print(f"{r['id'][:8]}  {r['name']:<28} {r['versions']:>2} versions  "
+                      f"{r['latest_version'] or '-':<6} {state}")
+        elif args.action == "lock":
+            try:
+                lock = hub.acquire_lock(conn, args.id, holder=args.holder,
+                                        ttl_minutes=args.ttl)
+            except hub.LockHeld as exc:
+                print(f"refused: {exc}", file=sys.stderr)
+                print(f"  held by {exc.lock['holder']} until {exc.lock['expires_at']}",
+                      file=sys.stderr)
+                sys.exit(1)
+            print(f"locked by {lock['holder']} until {lock['expires_at']}")
+            if lock.get("reclaimed_from"):
+                print(f"  reclaimed from an expired lock held by "
+                      f"{lock['reclaimed_from']['holder']}")
+        elif args.action == "unlock":
+            try:
+                res = hub.release_lock(conn, args.id, holder=args.holder, force=args.force)
+            except hub.LockHeld as exc:
+                print(f"refused: {exc}", file=sys.stderr)
+                sys.exit(1)
+            print("released" if res["released"] else res.get("reason", "nothing to release"))
+        elif args.action == "register":
+            try:
+                v = hub.register_version(conn, args.id, label=args.label,
+                                         author=args.author, source_path=args.path,
+                                         note=args.note)
+            except hub.HubError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return
+            print(f"registered {v['label']} ({v['size_bytes']} bytes, reference only)")
+            print(f"  path: {v['source_path']}")
+            print(f"  fingerprint: {v['fingerprint']}  (stat signature, no bytes read)")
+        elif args.action == "versions":
+            for v in hub.list_versions(conn, args.id):
+                mark = "present" if v["present_on_disk"] else "MISSING"
+                print(f"{v['label']:<8} {v['author']:<12} {v['created_at'][:19]}  {mark}")
+        elif args.action == "recover":
+            res = hub.recover(conn, args.id)
+            print(f"project: {res['project']['name']}")
+            print(f"recoverable: {res['recoverable']}  "
+                  f"(byte restore available: {res['byte_restore_available']})")
+            if res.get("newest"):
+                n = res["newest"]
+                print(f"newest: {n['label']} by {n['author']} at {n['created_at'][:19]}")
+                print(f"  path: {n['source_path']}")
+            if res.get("lock"):
+                print(f"  lock: {res['lock']['holder']} until {res['lock']['expires_at']}")
+            print()
+            print(res["instructions"])
+    finally:
+        conn.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="lfmc", description="Local-first media collaboration (MVP scaffold)")
     ap.add_argument("--db", default=DEFAULT_DB, help=f"catalogue database path (default {DEFAULT_DB})")
@@ -309,6 +379,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seeks", type=int, default=10)
     p.add_argument("--chunk-mb", type=float, default=2.0)
     p.set_defaults(func=cmd_spike_open)
+
+    p = sub.add_parser("project", help="project hub: locks, version references, recovery")
+    psub = p.add_subparsers(dest="action", required=True)
+    pc = psub.add_parser("create", help="create a project")
+    pc.add_argument("name")
+    psub.add_parser("list", help="list projects, locks and version counts")
+    pl = psub.add_parser("lock", help="take the project lock")
+    pl.add_argument("id")
+    pl.add_argument("--holder", required=True)
+    pl.add_argument("--ttl", type=float, default=hub.DEFAULT_LOCK_TTL_MINUTES,
+                    help="minutes until the lock expires")
+    pu = psub.add_parser("unlock", help="release the project lock")
+    pu.add_argument("id")
+    pu.add_argument("--holder", required=True)
+    pu.add_argument("--force", action="store_true", help="override the holder (host only)")
+    pr = psub.add_parser("register", help="register a project file as a version (reference only)")
+    pr.add_argument("id")
+    pr.add_argument("--label", required=True)
+    pr.add_argument("--path", required=True)
+    pr.add_argument("--author", default="owner")
+    pr.add_argument("--note")
+    pv = psub.add_parser("versions", help="list registered versions")
+    pv.add_argument("id")
+    prec = psub.add_parser("recover", help="conflict recovery report (no byte restore)")
+    prec.add_argument("id")
+    p.set_defaults(func=cmd_project)
 
     p = sub.add_parser("collaborators", help="issue and revoke scoped collaborator tokens")
     csub = p.add_subparsers(dest="action", required=True)
