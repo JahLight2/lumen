@@ -113,7 +113,8 @@ Windows pilot, so it was worth catching now.
 
 **Fix:** the fixture now clears rows (with `foreign_keys=OFF`, skipping FTS5
 shadow tables) instead of deleting the file, which behaves identically on all
-three platforms.
+three platforms. Re-run: **all five jobs green** (linux ×3, macOS, Windows), so
+`continue-on-error` was removed and the macOS/Windows jobs now block.
 
 Note this does **not** close any of the platform gaps in "Requires your
 machines": no real footage, no NLE, no actual WebDAV mount, no WinFsp/macFUSE.

@@ -29,15 +29,17 @@ jobs:
       - name: Run the suite
         run: python -m unittest discover -s tests -t . -v
 
-  # The product ships to macOS and Windows hosts, but this repo has only ever
-  # been exercised on Linux. These jobs exist to find platform assumptions, so
-  # they are allowed to fail WITHOUT blocking a merge -- but a failure here must
-  # be triaged and recorded in docs/PROGRESS.md ("Requires your machines"),
-  # never silently ignored. Delete continue-on-error once both are green.
+  # The product ships to macOS and Windows hosts. These jobs exist to find
+  # platform assumptions before a customer does. They started as non-blocking;
+  # on 11 Nov 2026 both went green (after catching a real Windows-only fixture
+  # bug -- see docs/PROGRESS.md), so they now block like Linux does.
+  #
+  # This proves the *Python suite* is portable. It does NOT prove footage
+  # scanning, NLE import, or a real WebDAV mount -- those still need user
+  # machines; see docs/PROGRESS.md.
   other-platforms:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
