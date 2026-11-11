@@ -79,3 +79,16 @@ Built directly in this repository (not in an agent IDE). Test count 103 → 161.
 
 Still blocked, unchanged: real NLE import proof, two-editor rehearsal,
 macOS/Windows mounts, TLS, AI indexing.
+
+## Antigravity handoff (11 Nov, late)
+
+- [x] `docs/ANTIGRAVITY_OPEN.md` — surface choice (IDE/VS Code extension for
+      `/browser` screenshots; App/CLI otherwise), current minimums (macOS 13+,
+      Win10/11, Linux glibc 2.28+), Chrome 144+ remote-debugging setup, two
+      verify-don't-build prompts, and the privacy warning about real catalogues.
+- [x] `tools/preview.sh` — one command to a running host (seeds synthetic data on
+      first run; `real` mode keeps auth on). Verified from a cold start.
+- [x] `AGENTS.md` + rules refreshed for the new code: 161 tests, `auth`/`hub`
+      modules, scope checks on every route, hub-never-reads-bytes, idempotent
+      markers, `--demo` disables auth.
+- [ ] Confirm Antigravity sign-in works for an Ethiopian Google account.

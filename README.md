@@ -150,6 +150,9 @@ client media never enter the log — only asset id, byte offsets, counts and out
 
 ## Documentation
 
+- [docs/ANTIGRAVITY_OPEN.md](docs/ANTIGRAVITY_OPEN.md) — open the repo in Google
+  Antigravity, run it, and screenshot it (`./tools/preview.sh` gets you a running
+  host in one command).
 - [docs/COLLAB.md](docs/COLLAB.md) — collaborator roles/scoped tokens, idempotent
   marker export, and the project hub (locks, version references, recovery).
 

@@ -53,7 +53,7 @@ storage, no required AI API. Tests are stdlib `unittest`.
 - Run tests after every slice, before every commit:
 
   ```
-  python3 -m unittest discover -s tests -t .        # expect 103 tests, all OK
+  python3 -m unittest discover -s tests -t .        # expect 161 tests, all OK
   ```
 
 - UI changes: also run the headless smoke test (needs a dev-only jsdom install
@@ -76,7 +76,7 @@ storage, no required AI API. Tests are stdlib `unittest`.
 
 | Path | What it is |
 |---|---|
-| `lfmc/core/` | db schema, scanner, identity/fingerprints, catalogue browse+search, review (comments/links/selects/markers) |
+| `lfmc/core/` | db schema (v2), scanner, identity/fingerprints, catalogue browse+search, review (comments/links/selects/markers), **auth** (scoped collaborator tokens), **hub** (project locks/versions/recovery) |
 | `lfmc/net/` | threaded HTTP server, auth, `/media` `/preview` `/api/*` `/dav/*` `/r/{token}` `/api/guest/*`, read-only WebDAV façade |
 | `lfmc/nle/` | NLE registry + residency modes (authoritative project state stays with the team) |
 | `lfmc/web/` | `index.html` (Shade-style app shell), `guest.html` (accountless review page) |
@@ -94,6 +94,23 @@ Gotchas that have already bitten us — do not "fix" them back:
 - `pkill -f "lfmc.cli serve"` kills the shell you are running in; stop servers by
   PID/process handle instead.
 - Use `python3 -u` for long-running output; stdout is block-buffered otherwise.
+- **Every catalogue/API route needs an explicit scope check.** A whole class of
+  routes once answered anyone on the LAN without a token (`/api/roots`,
+  `/api/browse`, `/api/search`, `/api/assets*`, `/api/events`, `/api/transfers`).
+  New routes go through `self._require_scope(...)`; guest link routes
+  (`/r/<token>`, `/api/guest/*`) are the only deliberate exceptions.
+- **`lfmc/core/hub.py` must never read project bytes.** `register_version()`
+  uses `os.stat()` only; the fingerprint is a stat signature, not a content
+  hash. Two tests enforce this (one patches `open()` to raise, one tokenises the
+  module for `open`/`read_text`/`shutil`/`subprocess`). Do not "improve" it into
+  reading or copying `.prproj`/`.drp`.
+- **Marker export is idempotent by design.** Stable key per note + the
+  `marker_exports` ledger; re-export must never add a second marker. Both
+  formats remain **unverified in real NLEs** until `docs/NLE_TEST_LOG.md` says
+  otherwise — keep `X-LFMC-Export-Verified: no`.
+- **`--demo` disables all auth.** It exists for synthetic-data previews only.
+  Never point it at a real drive, and never leave it running on a network you
+  do not control.
 
 ## Style
 

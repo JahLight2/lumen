@@ -9,7 +9,7 @@ description: "Python conventions and the test loop used in this repository."
 - Standard library only for runtime code. Dev-only tooling (jsdom, terser,
   fflate) lives under `tools/` and must stay out of `lfmc/`.
 - Tests: stdlib `unittest`, discovered with
-  `python3 -m unittest discover -s tests -t .` (needs `-t .`). Expect **103**
+  `python3 -m unittest discover -s tests -t .` (needs `-t .`). Expect **161**
   tests passing before your change; keep the count honest — if you add tests,
   say so, and never delete or `skip` an existing test to go green.
 - Every behavioural change needs a test that fails before and passes after.

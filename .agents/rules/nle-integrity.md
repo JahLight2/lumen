@@ -19,6 +19,10 @@ description: "Applies to anything touching Premiere Pro / DaVinci Resolve projec
    consent) vs private/customer-controlled (active V1). Never fall back from
    private → vendor-hosted without asking. The project hub stores references and
    status only, never a second copy of proprietary project contents.
-5. **Markers are additive.** Notes → markers must be repeatable and
+5. **The project hub never touches project bytes.** `lfmc/core/hub.py` stats the
+   file and records path + stat signature only. No read, no copy, no upload, no
+   "restore". Recovery produces instructions for a human in the NLE. Two tests
+   fail the build if project reads are reintroduced.
+6. **Markers are additive.** Notes → markers must be repeatable and
    non-destructive: keep a stable note→marker id map so re-export updates rather
    than duplicates, and state clearly which NLE/target format is used.
