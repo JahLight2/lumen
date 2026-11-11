@@ -274,6 +274,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._review_link_action(path)
             if path.startswith("/api/assets/") and path.endswith("/markers.csv"):
                 return self._markers_csv(path)
+            if path.startswith("/api/assets/") and path.endswith("/markers"):
+                return self._markers(path, qs)
             if path == "/api/selects" and self.command == "GET":
                 conn = self._conn()
                 try:
@@ -502,11 +504,53 @@ class Handler(BaseHTTPRequestHandler):
         try:
             try:
                 csv_text = review.markers_csv(conn, asset_id)
-            except review.ReviewError as exc:
+            except review.UnknownAsset as exc:
                 return self._err(404, "not_found", str(exc))
+            except review.ReviewError as exc:
+                return self._err(400, "invalid_export", str(exc))
             self._send(200, csv_text.encode("utf-8"), "text/csv; charset=utf-8", {
                 "Content-Disposition": f'attachment; filename="markers-{asset_id[:8]}.csv"',
                 "X-LFMC-Export-Verified": "no",   # never claim NLE round-trip until tested
+            })
+        finally:
+            conn.close()
+
+    def _markers(self, path: str, qs: dict):
+        """Marker export with a format and an export ledger.
+
+        ?format=premiere|resolve  (default premiere)
+        ?dry_run=1                render without recording an export
+        ?json=1                   return JSON (markers + ledger state) instead of a file
+        """
+        if not self._require_scope("markers"):
+            return
+        parts = path.strip("/").split("/")
+        asset_id = parts[2]
+        fmt = (qs.get("format", ["premiere"])[0] or "premiere").lower()
+        dry = qs.get("dry_run", ["0"])[0] in ("1", "true", "yes")
+        as_json = qs.get("json", ["0"])[0] in ("1", "true", "yes")
+        conn = self._conn()
+        try:
+            try:
+                result = review.export_markers(conn, asset_id, fmt=fmt, dry_run=dry)
+            except review.UnknownAsset as exc:
+                return self._err(404, "not_found", str(exc))
+            except review.ReviewError as exc:
+                return self._err(400, "invalid_export", str(exc))
+            if as_json:
+                payload = {k: result[k] for k in ("format", "markers", "recorded", "dry_run")}
+                payload["already_exported"] = review.export_summary(conn, asset_id)
+                payload["nle_verified"] = False
+                return self._json(200, payload)
+            ctype = ("text/csv; charset=utf-8" if result["format"] == "premiere"
+                     else "text/tab-separated-values; charset=utf-8")
+            ext = "csv" if result["format"] == "premiere" else "tsv"
+            self._send(200, result["text"].encode("utf-8"), ctype, {
+                "Content-Disposition":
+                    f'attachment; filename="markers-{asset_id[:8]}-{result["format"]}.{ext}"',
+                "X-LFMC-Export-Verified": "no",   # never claim NLE round-trip until tested
+                "X-LFMC-Markers": str(result["markers"]),
+                "X-LFMC-Format": result["format"],
             })
         finally:
             conn.close()

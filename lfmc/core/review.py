@@ -22,6 +22,7 @@ import hashlib
 import json
 import secrets
 import uuid
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from .db import now_iso
@@ -33,6 +34,10 @@ VISIBILITY = ("internal", "shared")
 
 class ReviewError(ValueError):
     pass
+
+
+class UnknownAsset(ReviewError):
+    """The asset id does not exist in this catalogue (maps to HTTP 404)."""
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +394,7 @@ def markers_for(conn, asset_id: str, version_label: str = "v1",
                 include_internal: bool = True) -> list[dict]:
     asset = conn.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
     if asset is None:
-        raise ReviewError("unknown asset")
+        raise UnknownAsset("unknown asset")
     fps = DEFAULT_FPS
     out = []
     for c in list_comments(conn, asset_id, version_label, include_internal):
@@ -411,15 +416,129 @@ def markers_for(conn, asset_id: str, version_label: str = "v1",
     return out
 
 
-def markers_csv(conn, asset_id: str, version_label: str = "v1") -> str:
+# ---------------------------------------------------------------------------
+# Marker export (idempotent)
+# ---------------------------------------------------------------------------
+# The first version of this appended a fresh marker every time. That is wrong in
+# a way that only shows up in the edit: a reviewer adds a note on Thursday, the
+# editor imports again on Friday, and the timeline now has two markers for one
+# note. So every note gets a stable marker_key and every (note, target) pair is
+# recorded in marker_exports. Re-exporting updates the ledger and keeps the
+# external_id stable instead of inventing a new one.
+#
+# VERIFICATION STATUS: unverified in both NLEs. The CSV column set and the
+# Resolve TSV layout below are written from published documentation; no marker
+# file produced here has been imported into a running Premiere Pro or Resolve.
+# Do not claim round-trip until docs/NLE_TEST_LOG.md has a machine and a date.
+
+MARKER_FORMATS = ("premiere", "resolve")
+
+
+def marker_key(asset_id: str, comment_id: str) -> str:
+    """Stable identity for one note's marker. Content-independent by design:
+    editing the note's text must not create a second marker."""
+    return f"{asset_id}:{comment_id}"
+
+
+def _external_id(asset_name: str, comment_id: str) -> str:
+    """The marker name we emit. Short suffix keeps it unique inside one clip
+    without hitting marker-name length limits."""
+    stem = Path(asset_name).stem[:40] if asset_name else "clip"
+    return f"{stem} · {comment_id[:6]}"
+
+
+def _record_export(conn, *, key: str, target: str, external_id: str) -> dict:
+    row = conn.execute(
+        "SELECT * FROM marker_exports WHERE marker_key=? AND target=?",
+        (key, target)).fetchone()
+    ts = now_iso()
+    if row is None:
+        conn.execute(
+            """INSERT INTO marker_exports(marker_key, target, external_id,
+                                          first_exported_at, last_exported_at, export_count)
+               VALUES(?,?,?,?,?,1)""",
+            (key, target, external_id, ts, ts))
+        count = 1
+    else:
+        conn.execute(
+            """UPDATE marker_exports SET last_exported_at=?, export_count=export_count+1
+               WHERE marker_key=? AND target=?""",
+            (ts, key, target))
+        count = row["export_count"] + 1
+        external_id = row["external_id"]      # keep the first name, stay stable
+    conn.commit()
+    return {"marker_key": key, "target": target, "external_id": external_id,
+            "export_count": count}
+
+
+def export_markers(conn, asset_id: str, version_label: str = "v1",
+                   fmt: str = "premiere", *, dry_run: bool = False) -> dict:
+    """Render markers for a clip and record the export in the ledger.
+
+    Returns {"format", "text", "markers", "recorded"}. With dry_run the text is
+    produced but nothing is written -- used by tests and by the UI preview.
+    """
+    if fmt not in MARKER_FORMATS:
+        raise ReviewError(f"unknown marker format {fmt!r}; expected one of "
+                          f"{', '.join(MARKER_FORMATS)}")
+    rows = markers_for(conn, asset_id, version_label)
+    recorded = []
+    for r in rows:
+        key = marker_key(asset_id, r["comment_id"])
+        ext = _external_id(r["asset_name"], r["comment_id"])
+        r["marker_key"] = key
+        r["external_id"] = ext
+        if not dry_run:
+            recorded.append(_record_export(conn, key=key, target=fmt,
+                                           external_id=ext))
+    text = (_render_premiere(rows) if fmt == "premiere" else _render_resolve(rows))
+    return {"format": fmt, "text": text, "markers": len(rows),
+            "recorded": recorded, "dry_run": dry_run}
+
+
+def _render_premiere(rows: list[dict]) -> str:
     import csv
     import io
-    rows = markers_for(conn, asset_id, version_label)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["Name", "Timecode", "Frame", "FPS", "Description", "Author", "Resolved"])
     for r in rows:
-        w.writerow([r["asset_name"], r["timecode"], r["frame"], r["fps"],
+        w.writerow([r["external_id"], r["timecode"], r["frame"], r["fps"],
                     r["body"].replace("\n", " "), r["author"],
                     "yes" if r["resolved"] else "no"])
     return buf.getvalue()
+
+
+def _render_resolve(rows: list[dict]) -> str:
+    """Tab-separated, one marker per line.
+
+    Colour is fixed per state: Blue = open note, Green = resolved. Duration is
+    one frame, because these are point notes, not ranges (a note with an end
+    timecode is still anchored at its start).
+    """
+    lines = ["Marker Name\tDescription\tTimecode\tDuration\tColor\tNotes"]
+    for r in rows:
+        colour = "Green" if r["resolved"] else "Blue"
+        lines.append("\t".join([
+            r["external_id"],
+            r["body"].replace("\t", " ").replace("\n", " "),
+            r["timecode"],
+            "00:00:00:01",
+            colour,
+            f"by {r['author']}",
+        ]))
+    return "\n".join(lines) + "\n"
+
+
+def export_summary(conn, asset_id: str) -> list[dict]:
+    """What has already been exported for this clip, per target."""
+    rows = conn.execute(
+        """SELECT * FROM marker_exports WHERE marker_key LIKE ?
+           ORDER BY target, last_exported_at""",
+        (f"{asset_id}:%",)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def markers_csv(conn, asset_id: str, version_label: str = "v1") -> str:
+    """Back-compat wrapper: Premiere layout, recorded in the export ledger."""
+    return export_markers(conn, asset_id, version_label, "premiere")["text"]
