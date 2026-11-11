@@ -1,0 +1,51 @@
+name: tests
+
+# Runs the stdlib test suite on the platforms the product actually targets.
+# No secrets, no services, no network fixtures: the suite builds its own
+# temporary drives and synthetic MP4s.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: linux · py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run the suite
+        run: python -m unittest discover -s tests -t . -v
+
+  # The product ships to macOS and Windows hosts, but this repo has only ever
+  # been exercised on Linux. These jobs exist to find platform assumptions, so
+  # they are allowed to fail WITHOUT blocking a merge -- but a failure here must
+  # be triaged and recorded in docs/PROGRESS.md ("Requires your machines"),
+  # never silently ignored. Delete continue-on-error once both are green.
+  other-platforms:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run the suite
+        run: python -m unittest discover -s tests -t .

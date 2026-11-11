@@ -43,6 +43,25 @@ WEB = ROOT / "lfmc" / "web"
 OUT_DEFAULT = ROOT / "demo-static"
 
 
+HOST_PATH_MARKERS = ("/home/", "/Users/", "C:\\Users\\", "/private/var/",
+                     "/var/folders/", "/tmp/")
+
+
+def assert_no_host_paths(fx: dict) -> None:
+    """Fail the export if the captured fixtures contain a host filesystem path.
+
+    A demo that ships with /home/<builder>/... in it leaks where it was made and
+    looks unfinished. This is a build-time guard, not a runtime filter: better to
+    stop than to quietly publish.
+    """
+    blob = json.dumps(fx)
+    found = [m for m in HOST_PATH_MARKERS if m in blob]
+    if found:
+        raise SystemExit(
+            "refusing to export: fixtures contain host paths "
+            f"({', '.join(found)}). Redact them in collect() before shipping.")
+
+
 def get(base: str, path: str):
     with urllib.request.urlopen(base + path, timeout=20) as r:
         return json.loads(r.read().decode())
@@ -58,6 +77,14 @@ def collect(base: str) -> dict:
     fx["/api/review-links"] = get(base, "/api/review-links")
 
     roots = get(base, "/api/roots")
+    # The captured fixtures travel with the demo: a public/shared copy must not
+    # disclose the build machine's filesystem layout. Absolute paths in the root
+    # rows are replaced with a neutral mount point. (Relative preview paths are
+    # left alone -- they carry no host information.)
+    for root in roots.get("roots", []):
+        label = root.get("label") or "Demo Drive"
+        root["abs_path"] = f"/Volumes/{label}"
+        root["volume_hint"] = "demo"
     fx["/api/roots"] = roots
     all_assets: list[dict] = []
     for root in roots.get("roots", []):
@@ -244,6 +271,7 @@ def build(base: str, out: pathlib.Path) -> dict:
         guest_html = guest_html[:gi] + payload_js + gshim + guest_html[gi:]
         (out / "guest.html").write_text(guest_html)
 
+    assert_no_host_paths(fx)
     (out / "fixtures.json").write_text(json.dumps(fx, indent=1))
     (out / "vercel.json").write_text(json.dumps({
         "cleanUrls": True,

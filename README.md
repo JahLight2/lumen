@@ -192,3 +192,21 @@ The repo carries an agent contract: `AGENTS.md` (always-on rules) and
 honesty, cost). Google Antigravity, or any agent that reads `AGENTS.md`, picks
 them up automatically. Setup, permission preset and starter prompts:
 [`docs/ANTIGRAVITY.md`](docs/ANTIGRAVITY.md).
+
+## License
+
+No license is granted yet — all rights reserved. This repository is a working
+product for a private pilot, not a published library. If it is ever meant to be
+shared publicly, choose a license deliberately (and check what that implies for
+the third-party tools named in `docs/COSTS.md`, several of which carry AGPL or
+non-commercial terms that would constrain a public release).
+
+## Repository hygiene
+
+`data/`, `*.db`, `*.token` and `.env` are git-ignored and must stay that way: the
+catalogue indexes real drive contents, and a token in git history is a token
+forever. Before any push:
+
+```bash
+git ls-files | grep -E '\.(db|token|mp4|mov)$' || echo "clean"
+```
