@@ -167,7 +167,7 @@ drive are not the same problem over a typical Addis uplink.
 
 **What was deployed:** project `lfmc-demo-static` (id `prj_nblyiy6VgJfFjgXH27oKtmYc5mMj`), production deployment `dpl_JCEGpfnH9VMB6VAssQpR5ku1WAvo` → https://lfmc-demo-static-kiruproof-7222.vercel.app — a static read-only snapshot (loader + gzip payload). Requires the owner to be signed in to Vercel. Remove with `delete_project` when done; nothing else in the account was touched.
 
-## Google Antigravity (build tooling, evaluated 5 Nov 2026)
+## Google Antigravity (build tooling, evaluated 23 Oct 2026)
 
 Used to *write* the code, never to serve it. No customer data ever reaches it.
 
@@ -183,3 +183,45 @@ Used to *write* the code, never to serve it. No customer data ever reaches it.
 
 Sources: antigravity.google/docs/{getting-started,rules,permissions}, antigravity.google/download;
 pricing corroborated by CloudZero (18 Sep 2026), preuve.ai (10 Oct 2026) and vibecoding.tech (26 Sep 2026).
+
+## Supabase (evaluated 11 Nov 2026 — verdict: not the catalogue; optional vendor-hosted control plane only)
+
+Enabled in the tooling list, evaluated honestly. **Not adopted for this MVP.** Free tier below is
+recorded so the decision is auditable and so the option stays open for the first pilot's
+vendor-hosted mode — which requires informed consent and a written disclosure before any code.
+
+| Item | Supabase Free | Consequence for us |
+|---|---|---|
+| Projects | 2 active | pilot control plane would eat one |
+| Database size | 500 MB per project (shared with auth/realtime schema) | catalogue metadata fits; **media does not** — a single project drive is 16 GB+ |
+| File storage | 1 GB | ~0.006% of one 16 GB drive; cannot hold proxies either |
+| Egress | 5 GB/mo + 5 GB cached | a single review session streaming proxies can pass this |
+| MAU | 50,000 | not a constraint |
+| Edge function invocations | 500,000/mo | not a constraint |
+| API requests | unlimited | not a constraint |
+| **Idle behaviour** | **projects pause after 7 days of inactivity; do not wake on request — manual restore** | **decisive for a small team with gaps between jobs.** Cannot be the only path for anything a client depends on |
+| Backups | none on Free | a catalogue is rebuildable by rescan; **comments and review links are not** — that is real unpaid-for risk |
+| Auth emails | 2/hour on the built-in sender | fine for a 3–5 person pilot, not for a client-facing flow |
+| Commercial use | **permitted** on Free (unlike Vercel Hobby) | removes the licence objection; the pause and backup gaps remain |
+| Paid tier | Pro US$25/org/month | **violates the $0 rule**; not to be enabled |
+
+**Why it is not the catalogue.** The catalogue is a SQLite file next to the drive that holds the
+originals. Hosting it on Supabase would (a) add a network hop to every browse, (b) fail the
+"catalogue works while the drive is disconnected" requirement the moment connectivity drops — the
+opposite guarantee, and (c) turn the deployment into a **vendor-hosted** residency by definition,
+which the blueprint treats as a separate mode requiring consent, not a drop-in replacement. It also
+does nothing for the WebDAV mount or byte-range reads, because those must happen on the machine that
+physically owns the drive.
+
+**Where it could legitimately go.** The first pilot's *vendor-hosted control plane*: account
+identity, review-link metadata, comment/reaction sync so a client's phone can post a note while the
+host machine is asleep. **Metadata only** — never footage, proxies, transcripts, face data or project
+file contents. If that mode is chosen: written disclosure first, then schema, then sync, then the
+pause-recovery runbook (what happens when a project wakes up to a paused database).
+
+**Free-tier durability rule.** As with every free tier in this ledger, the fallback must exist and be
+documented before the dependency is allowed: here it is the current local SQLite catalogue plus the
+static snapshot, both of which keep working with Supabase absent.
+
+Sources: supabase.com/pricing (Free plan feature table), Supabase docs on project pausing and
+backups; secondary corroboration — CloudZero, itpathsolutions (21 Sep 2026), selfhost.dev (1 Nov 2026).
